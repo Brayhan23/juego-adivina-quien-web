@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Adivina Quien</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+  </head>
+  <body>
+    <main class="game-shell fade-in">
+      <header class="game-header slide-up">
+        <div class="title-block">
+          <p class="eyebrow">Juego en tiempo real</p>
+          <h1>Adivina Quien</h1>
+          <p class="subtitle">
+            Haz preguntas inteligentes, descarta sospechosos y descubre el personaje secreto del rival.
+          </p>
+        </div>
+
+        <section class="status-panel" aria-label="Estado de la partida">
+          <div class="status-item">
+            <span class="status-label">Conexion</span>
+            <strong id="connection-status" class="status-pill pulse">Conectando...</strong>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Emparejamiento</span>
+            <strong id="match-status" class="status-pill turn-waiting">Esperando rival</strong>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Turno</span>
+            <strong id="turn-status" class="status-pill turn-waiting">Turno del rival</strong>
+          </div>
+        </section>
+      </header>
+
+      <section id="server-message" class="server-message glow" role="status" aria-live="polite">
+        El servidor esta preparando tu partida.
+      </section>
+
+      <div class="game-layout">
+        <section class="player-column" aria-label="Informacion del jugador">
+          <article id="secret-card" class="secret-card bounce">
+            <span class="section-kicker">Tu personaje secreto</span>
+            <div class="secret-avatar" id="secret-avatar">?</div>
+            <h2 id="secret-name">Esperando personaje</h2>
+            <dl id="secret-traits" class="trait-list">
+              <div>
+                <dt>Estado</dt>
+                <dd>Se revelara al iniciar la partida</dd>
+              </div>
+            </dl>
+          </article>
+
+          <section class="actions-panel" aria-label="Acciones del turno">
+            <div class="panel-heading">
+              <span class="section-kicker">Acciones</span>
+              <h2>Jugada actual</h2>
+            </div>
+
+            <form id="question-form" class="action-card" autocomplete="off">
+              <h3>Hacer pregunta</h3>
+              <label for="question-attribute">Caracteristica</label>
+              <select id="question-attribute" name="attribute">
+                <option value="gafas">Usa gafas</option>
+                <option value="sombrero">Usa sombrero</option>
+                <option value="barba">Tiene barba</option>
+                <option value="bigote">Tiene bigote</option>
+                <option value="cabello_largo">Tiene cabello largo</option>
+                <option value="genero">Genero</option>
+                <option value="color_cabello">Color de cabello</option>
+                <option value="accesorio">Accesorio</option>
+              </select>
+
+              <label for="question-value">Valor</label>
+              <select id="question-value" name="value">
+                <option value="true">Si</option>
+                <option value="false">No</option>
+                <option value="masculino">Masculino</option>
+                <option value="femenino">Femenino</option>
+                <option value="negro">Cabello negro</option>
+                <option value="castano">Cabello castano</option>
+                <option value="rubio">Cabello rubio</option>
+                <option value="rojo">Cabello rojo</option>
+                <option value="gris">Cabello gris</option>
+                <option value="aretes">Aretes</option>
+                <option value="bufanda">Bufanda</option>
+                <option value="collar">Collar</option>
+                <option value="corbata">Corbata</option>
+                <option value="broche">Broche</option>
+                <option value="audifonos">Audifonos</option>
+                <option value="lazo">Lazo</option>
+                <option value="reloj">Reloj</option>
+                <option value="pulsera">Pulsera</option>
+                <option value="panuelo">Panuelo</option>
+                <option value="diadema">Diadema</option>
+                <option value="mochila">Mochila</option>
+                <option value="flor">Flor</option>
+                <option value="chaleco">Chaleco</option>
+                <option value="bolso">Bolso</option>
+                <option value="camara">Camara</option>
+              </select>
+
+              <button id="ask-button" class="primary-button" type="submit">Preguntar</button>
+            </form>
+
+            <form id="guess-form" class="action-card" autocomplete="off">
+              <h3>Intentar adivinar</h3>
+              <p class="selected-copy">
+                Personaje seleccionado:
+                <strong id="selected-character-name">Ninguno</strong>
+              </p>
+              <input id="selected-character-id" name="character_id" type="hidden">
+              <button id="guess-button" class="danger-button" type="submit">
+                Adivinar personaje
+              </button>
+            </form>
+          </section>
+        </section>
+
+        <section class="board-panel" aria-label="Tablero de personajes">
+          <div class="panel-heading board-heading">
+            <div>
+              <span class="section-kicker">Tablero</span>
+              <h2>Personajes disponibles</h2>
+            </div>
+            <button id="request-state-button" class="ghost-button" type="button">Actualizar</button>
+          </div>
+
+          <div id="characters-board" class="characters-grid">
+            <button class="character-card disabled" type="button" disabled>
+              <span class="character-avatar">?</span>
+              <strong>Esperando tablero</strong>
+              <span class="tag-row">
+                <span class="tag">Servidor</span>
+                <span class="tag">Socket.IO</span>
+              </span>
+            </button>
+          </div>
+        </section>
+
+        <aside class="history-panel" aria-label="Historial de acciones">
+          <div class="panel-heading">
+            <span class="section-kicker">Historial</span>
+            <h2>Actividad</h2>
+          </div>
+
+          <div id="history-list" class="history-list">
+            <article class="history-item info fade-in">
+              <strong>Sistema</strong>
+              <p>Cuando inicie la partida, aqui apareceran preguntas, respuestas y resultados.</p>
+            </article>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <section id="game-over-modal" class="game-over-modal" aria-hidden="true">
+      <div class="game-over-card slide-up">
+        <p id="game-over-kicker" class="section-kicker">Partida terminada</p>
+        <h2 id="game-over-title">Resultado pendiente</h2>
+        <p id="game-over-message">El servidor confirmara el resultado final.</p>
+        <button id="play-again-button" class="primary-button" type="button">Jugar otra vez</button>
+      </div>
+    </section>
+
+    <template id="character-card-template">
+      <button class="character-card fade-in" type="button">
+        <span class="character-avatar"></span>
+        <strong class="character-name"></strong>
+        <span class="tag-row"></span>
+      </button>
+    </template>
+
+    <template id="history-item-template">
+      <article class="history-item fade-in">
+        <strong class="history-title"></strong>
+        <p class="history-text"></p>
+      </article>
+    </template>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="/static/js/client.js"></script>
+  </body>
+</html>
