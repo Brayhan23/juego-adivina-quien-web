@@ -1,5 +1,8 @@
 import threading
 import time
+import random
+import socket as network_socket
+import string
 
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit, join_room
@@ -12,10 +15,11 @@ app.config["SECRET_KEY"] = "dev-secret-key"
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
-# Shared server state. These structures are the only place where matchmaking
-# and game ownership live, so every access that can change them uses
-# state_lock. Each GameSession also has its own internal lock for turn actions.
+# Shared server state. The automatic queue, QR/private rooms, active games and
+# player index are intentionally separate so one matchmaking mode cannot steal
+# players or state from the other. Every mutation uses state_lock.
 waiting_players = []
+private_rooms = {}
 active_games = {}
 player_to_game = {}
 game_threads = {}
@@ -34,10 +38,77 @@ def create_player(sid):
     }
 
 
+def remove_from_waiting_queue(sid):
+    waiting_players[:] = [
+        player for player in waiting_players if player["sid"] != sid
+    ]
+
+
+def remove_private_room_for_creator(sid):
+    removed_codes = []
+
+    for room_code, room in list(private_rooms.items()):
+        if room["creator"]["sid"] == sid:
+            private_rooms.pop(room_code, None)
+            removed_codes.append(room_code)
+
+    return removed_codes
+
+
+def generate_room_code():
+    alphabet = string.ascii_uppercase + string.digits
+
+    while True:
+        code = "".join(random.choices(alphabet, k=6))
+        if code not in private_rooms:
+            return code
+
+
+def get_local_ip():
+    try:
+        with network_socket.socket(network_socket.AF_INET, network_socket.SOCK_DGRAM) as probe:
+            probe.connect(("8.8.8.8", 80))
+            return probe.getsockname()[0]
+    except OSError:
+        return None
+
+
+def build_invitation_url(room_code):
+    local_ip = get_local_ip()
+    if local_ip and not local_ip.startswith("127."):
+        return f"http://{local_ip}:5000/?room={room_code}"
+
+    return f"{request.host_url.rstrip('/')}/?room={room_code}"
+
+
+def create_game_for_players(player_one, player_two):
+    game = GameSession(player_one, player_two)
+
+    # active_games stores each independent GameSession by its UUID. The reverse
+    # index player_to_game lets every socket event find exactly one session
+    # without scanning or touching unrelated automatic or QR games.
+    active_games[game.id] = game
+    for player_id in game.player_ids:
+        player_to_game[player_id] = game.id
+
+    # A daemon thread is created per game. The game logic remains inside
+    # GameSession, while this thread provides an isolated lifecycle worker.
+    thread = threading.Thread(
+        target=manage_game_thread,
+        args=(game.id,),
+        daemon=True,
+    )
+    game_threads[game.id] = thread
+
+    return game, thread
+
+
 def add_player_to_queue(sid):
     thread = None
 
     with state_lock:
+        # Public matchmaking now starts only when the client explicitly emits
+        # join_public_queue. A plain socket connection never enters this queue.
         # player_to_game is the source of truth for routing a socket to its
         # GameSession. This prevents actions from one browser tab from being
         # applied to any other active game.
@@ -49,9 +120,16 @@ def add_player_to_queue(sid):
 
             player_to_game.pop(sid, None)
 
+        # A player cannot wait in a private QR room and public queue at the
+        # same time. Choosing public matchmaking cancels any private room they
+        # created before entering waiting_players.
+        remove_private_room_for_creator(sid)
+
         if any(player["sid"] == sid for player in waiting_players):
             return {"status": "waiting", "game": None}
 
+        # Public matchmaking only uses waiting_players. QR rooms are stored in
+        # private_rooms and never consume this queue.
         waiting_players.append(create_player(sid))
 
         if len(waiting_players) < 2:
@@ -59,27 +137,62 @@ def add_player_to_queue(sid):
 
         player_one = waiting_players.pop(0)
         player_two = waiting_players.pop(0)
-        game = GameSession(player_one, player_two)
-
-        # active_games stores each independent GameSession by its UUID. The
-        # reverse index player_to_game lets every socket event find exactly one
-        # session without scanning or touching unrelated games.
-        active_games[game.id] = game
-        for player_id in game.player_ids:
-            player_to_game[player_id] = game.id
-
-        # A daemon thread is created per game. The game logic remains inside
-        # GameSession, while this thread provides an isolated lifecycle worker
-        # for the session and demonstrates concurrent game management.
-        thread = threading.Thread(
-            target=manage_game_thread,
-            args=(game.id,),
-            daemon=True,
-        )
-        game_threads[game.id] = thread
+        game, thread = create_game_for_players(player_one, player_two)
 
     thread.start()
     return {"status": "matched", "game": game}
+
+
+def create_private_room_for_player(sid):
+    with state_lock:
+        if sid in player_to_game:
+            raise ValueError("Ya tienes una partida activa.")
+
+        # Choosing private matchmaking removes the player from public waiting.
+        # This keeps waiting_players and private_rooms completely separated.
+        remove_from_waiting_queue(sid)
+
+        for room in private_rooms.values():
+            if room["creator"]["sid"] == sid:
+                return room
+
+        room_code = generate_room_code()
+        private_rooms[room_code] = {
+            "code": room_code,
+            "creator": create_player(sid),
+            "created_at": time.time(),
+        }
+
+        return private_rooms[room_code]
+
+
+def join_private_room_for_player(sid, room_code):
+    room_code = (room_code or "").strip().upper()
+    thread = None
+
+    with state_lock:
+        if sid in player_to_game:
+            raise ValueError("Ya tienes una partida activa.")
+
+        room = private_rooms.get(room_code)
+        if not room:
+            raise ValueError("La sala QR no existe o ya fue usada.")
+
+        creator = room["creator"]
+        if creator["sid"] == sid:
+            raise ValueError("Ya estas esperando a otro jugador en esta sala QR.")
+
+        remove_from_waiting_queue(sid)
+        remove_private_room_for_creator(sid)
+        private_rooms.pop(room_code, None)
+
+        # The QR room accepts exactly two players: the creator and the first
+        # valid guest. Once matched, the room is removed and a normal
+        # GameSession is created, isolated like any automatic match.
+        game, thread = create_game_for_players(creator, create_player(sid))
+
+    thread.start()
+    return game
 
 
 def manage_game_thread(game_id):
@@ -157,11 +270,11 @@ def remove_player_from_server(player_id):
 
     with state_lock:
         # Removing from waiting_players handles a tab that disconnects before
-        # being matched. Removing from active_games/player_to_game handles a tab
-        # that leaves an active game without touching other sessions.
-        waiting_players[:] = [
-            player for player in waiting_players if player["sid"] != player_id
-        ]
+        # being matched. Removing private_rooms handles a QR creator who leaves
+        # before the guest joins. Active game cleanup does not touch unrelated
+        # automatic or QR sessions.
+        remove_from_waiting_queue(player_id)
+        remove_private_room_for_creator(player_id)
 
         game_id = player_to_game.pop(player_id, None)
         if not game_id:
@@ -183,16 +296,77 @@ def emit_error(message):
 
 @socketio.on("connect")
 def handle_connect():
-    sid = request.sid
     emit("connected", {"message": "Conectado al servidor de Adivina Quien."})
 
+    # Connecting only establishes the socket. The user must choose public or
+    # private matchmaking from the menu, so no one is added to waiting_players
+    # just by opening the page.
+    if request.args.get("room"):
+        emit("private_room_detected", {"message": "Codigo QR detectado. Uniendote a la sala..."})
+
+
+@socketio.on("join_public_queue")
+def handle_join_public_queue():
+    sid = request.sid
     result = add_player_to_queue(sid)
+
     if result["status"] == "waiting":
         emit("queue_status", {"message": "Esperando otro jugador..."})
         return
 
     if result["game"]:
         start_game(result["game"])
+
+
+@socketio.on("cancel_matchmaking")
+def handle_cancel_matchmaking():
+    sid = request.sid
+
+    with state_lock:
+        if sid in player_to_game:
+            emit_error("No puedes salir del emparejamiento porque ya estas en una partida.")
+            return
+
+        remove_from_waiting_queue(sid)
+        remove_private_room_for_creator(sid)
+
+    emit("matchmaking_cancelled", {"message": "Volviste al menu principal."})
+
+
+@socketio.on("create_private_room")
+def handle_create_private_room():
+    sid = request.sid
+
+    try:
+        room = create_private_room_for_player(sid)
+    except ValueError as error:
+        emit_error(str(error))
+        return
+
+    invitation_url = build_invitation_url(room["code"])
+    emit(
+        "private_room_created",
+        {
+            "room_code": room["code"],
+            "invitation_url": invitation_url,
+            "message": "Sala QR creada. Esperando al segundo jugador.",
+        },
+    )
+    emit("queue_status", {"message": "Sala QR creada. Esperando invitado...", "private": True})
+
+
+@socketio.on("join_private_room")
+def handle_join_private_room(data):
+    sid = request.sid
+    room_code = (data or {}).get("room")
+
+    try:
+        game = join_private_room_for_player(sid, room_code)
+    except ValueError as error:
+        emit_error(str(error))
+        return
+
+    start_game(game)
 
 
 @socketio.on("disconnect")
@@ -271,7 +445,7 @@ def handle_request_state():
 if __name__ == "__main__":
     socketio.run(
         app,
-        host="localhost",
+        host="0.0.0.0",
         port=5000,
         debug=True,
         use_reloader=False,

@@ -37,7 +37,73 @@
         El servidor esta preparando tu partida.
       </section>
 
-      <div class="game-layout">
+      <section id="main-menu" class="main-menu slide-up" aria-label="Elige modo de juego">
+        <div class="panel-heading mode-heading">
+          <div>
+            <span class="section-kicker">Menu principal</span>
+            <h2>Elige modo de juego</h2>
+          </div>
+        </div>
+
+        <div class="mode-grid">
+          <button id="join-public-button" class="mode-card public-mode" type="button">
+            <span class="mode-icon">!</span>
+            <strong>Partida publica</strong>
+            <span>Juega con el siguiente jugador disponible en la red.</span>
+          </button>
+
+          <button id="choose-private-button" class="mode-card private-mode" type="button">
+            <span class="mode-icon">QR</span>
+            <strong>Partida privada</strong>
+            <span>Crea un enlace y codigo QR para jugar con una persona especifica.</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="public-waiting-panel" class="waiting-panel is-hidden slide-up" aria-label="Espera de partida publica">
+        <div>
+          <span class="section-kicker">Partida publica</span>
+          <h2>Esperando rival disponible</h2>
+          <p>Te uniremos con el siguiente jugador que tambien haya elegido partida publica.</p>
+        </div>
+        <button id="cancel-public-button" class="ghost-button" type="button">Volver al menu</button>
+      </section>
+
+      <section id="qr-panel" class="qr-panel is-hidden slide-up" aria-label="Emparejamiento por QR">
+        <div class="qr-copy">
+          <span class="section-kicker">Invitacion privada</span>
+          <h2>Partida por QR</h2>
+          <p>
+            Crea una sala privada y comparte el enlace con otro jugador conectado a la misma red WiFi.
+          </p>
+          <div class="qr-actions">
+            <button id="create-qr-room-button" class="primary-button" type="button">
+              Crear partida por QR
+            </button>
+            <button id="copy-invite-button" class="ghost-button" type="button" disabled>
+              Copiar enlace
+            </button>
+            <button id="cancel-private-button" class="ghost-button" type="button">
+              Volver al menu
+            </button>
+          </div>
+        </div>
+
+        <div id="qr-invite-card" class="qr-invite-card" hidden>
+          <div class="qr-code-box" id="qr-code" aria-label="Codigo QR de invitacion"></div>
+          <div class="qr-details">
+            <span class="status-label">Codigo de sala</span>
+            <strong id="private-room-code" class="room-code">------</strong>
+            <span class="status-label">URL de invitacion</span>
+            <a id="private-room-url" class="invite-link" href="#" target="_blank" rel="noreferrer">
+              Esperando enlace
+            </a>
+            <p class="wifi-note">El otro jugador debe estar conectado a la misma red WiFi.</p>
+          </div>
+        </div>
+      </section>
+
+      <div id="game-layout" class="game-layout is-hidden">
         <section class="player-column" aria-label="Informacion del jugador">
           <article id="secret-card" class="secret-card bounce">
             <span class="section-kicker">Tu personaje secreto</span>
@@ -179,6 +245,7 @@
     </template>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="/static/js/client.js"></script>
   </body>
 </html>

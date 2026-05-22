@@ -1,4 +1,10 @@
-const socket = io();
+const urlParams = new URLSearchParams(window.location.search);
+const invitationRoom = (urlParams.get("room") || "").trim().toUpperCase();
+const socket = io({
+  query: {
+    room: invitationRoom,
+  },
+});
 
 const elements = {
   body: document.body,
@@ -7,6 +13,20 @@ const elements = {
   matchStatus: document.querySelector("#match-status"),
   turnStatus: document.querySelector("#turn-status"),
   serverMessage: document.querySelector("#server-message"),
+  mainMenu: document.querySelector("#main-menu"),
+  joinPublicButton: document.querySelector("#join-public-button"),
+  choosePrivateButton: document.querySelector("#choose-private-button"),
+  publicWaitingPanel: document.querySelector("#public-waiting-panel"),
+  cancelPublicButton: document.querySelector("#cancel-public-button"),
+  qrPanel: document.querySelector("#qr-panel"),
+  createQrRoomButton: document.querySelector("#create-qr-room-button"),
+  copyInviteButton: document.querySelector("#copy-invite-button"),
+  cancelPrivateButton: document.querySelector("#cancel-private-button"),
+  qrInviteCard: document.querySelector("#qr-invite-card"),
+  qrCode: document.querySelector("#qr-code"),
+  privateRoomCode: document.querySelector("#private-room-code"),
+  privateRoomUrl: document.querySelector("#private-room-url"),
+  gameLayout: document.querySelector("#game-layout"),
   secretCard: document.querySelector("#secret-card"),
   secretAvatar: document.querySelector("#secret-avatar"),
   secretName: document.querySelector("#secret-name"),
@@ -103,6 +123,8 @@ const uiState = {
   latestStatus: "waiting",
   isYourTurn: false,
   boardIds: new Set(),
+  invitationUrl: "",
+  matchmakingPending: false,
 };
 
 function animateElement(element, animationClass) {
@@ -120,6 +142,149 @@ function showToast(message, type = "info") {
   elements.serverMessage.classList.remove("info", "success", "error", "warning", "positive", "negative");
   elements.serverMessage.classList.add(type);
   animateElement(elements.serverMessage, type === "error" ? "shake" : "glow");
+}
+
+function setModeButtonsDisabled(disabled) {
+  elements.joinPublicButton.disabled = disabled;
+  elements.choosePrivateButton.disabled = disabled;
+  elements.createQrRoomButton.disabled = disabled;
+}
+
+function resetPrivateInviteView() {
+  uiState.invitationUrl = "";
+  elements.privateRoomCode.textContent = "------";
+  elements.privateRoomUrl.href = "#";
+  elements.privateRoomUrl.textContent = "Esperando enlace";
+  elements.qrInviteCard.hidden = true;
+  elements.copyInviteButton.disabled = true;
+  elements.qrCode.replaceChildren();
+}
+
+function showMainMenu() {
+  uiState.matchmakingPending = false;
+  uiState.isYourTurn = false;
+  updateMatchStatus("menu");
+  setModeButtonsDisabled(false);
+  elements.copyInviteButton.disabled = true;
+  elements.cancelPublicButton.disabled = false;
+  elements.cancelPrivateButton.disabled = false;
+  elements.createQrRoomButton.textContent = "Crear partida por QR";
+  elements.mainMenu.classList.remove("is-hidden");
+  elements.publicWaitingPanel.classList.add("is-hidden");
+  elements.qrPanel.classList.add("is-hidden");
+  elements.gameLayout.classList.add("is-hidden");
+  resetPrivateInviteView();
+}
+
+function showWaitingPublic() {
+  uiState.matchmakingPending = true;
+  updateMatchStatus("waiting");
+  elements.mainMenu.classList.add("is-hidden");
+  elements.publicWaitingPanel.classList.remove("is-hidden");
+  elements.qrPanel.classList.add("is-hidden");
+  elements.gameLayout.classList.add("is-hidden");
+  elements.cancelPublicButton.disabled = false;
+  setModeButtonsDisabled(true);
+  animateElement(elements.publicWaitingPanel, "slide-up");
+}
+
+function showPrivateRoomPanel(joining = false) {
+  uiState.matchmakingPending = true;
+  updateMatchStatus("private_waiting");
+  elements.mainMenu.classList.add("is-hidden");
+  elements.publicWaitingPanel.classList.add("is-hidden");
+  elements.qrPanel.classList.remove("is-hidden");
+  elements.gameLayout.classList.add("is-hidden");
+  elements.createQrRoomButton.disabled = true;
+  elements.createQrRoomButton.textContent = joining ? "Uniendote..." : "Esperando invitado...";
+  elements.cancelPrivateButton.disabled = joining;
+  animateElement(elements.qrPanel, "slide-up");
+}
+
+function showGameScreen() {
+  uiState.matchmakingPending = false;
+  elements.mainMenu.classList.add("is-hidden");
+  elements.publicWaitingPanel.classList.add("is-hidden");
+  elements.qrPanel.classList.add("is-hidden");
+  elements.gameLayout.classList.remove("is-hidden");
+  setModeButtonsDisabled(true);
+}
+
+function joinPublicGame() {
+  if (uiState.latestStatus === "active") {
+    showToast("Ya estas en una partida activa.", "error");
+    return;
+  }
+
+  showWaitingPublic();
+  socket.emit("join_public_queue");
+  showToast("Buscando rival para partida publica...", "info");
+}
+
+function createPrivateGame() {
+  if (uiState.latestStatus === "active") {
+    showToast("No puedes crear una sala QR porque ya estas en una partida.", "error");
+    return;
+  }
+
+  resetPrivateInviteView();
+  showPrivateRoomPanel(false);
+  socket.emit("create_private_room");
+  showToast("Creando sala privada por QR...", "info");
+}
+
+function cancelMatchmaking() {
+  if (uiState.latestStatus === "active") {
+    showToast("No puedes volver al menu durante una partida activa.", "error");
+    return;
+  }
+
+  elements.cancelPublicButton.disabled = true;
+  elements.cancelPrivateButton.disabled = true;
+  socket.emit("cancel_matchmaking");
+  showToast("Cancelando emparejamiento...", "info");
+}
+
+function showQrInvite(roomCode, invitationUrl) {
+  uiState.invitationUrl = invitationUrl;
+  elements.privateRoomCode.textContent = roomCode;
+  elements.privateRoomUrl.href = invitationUrl;
+  elements.privateRoomUrl.textContent = invitationUrl;
+  elements.qrInviteCard.hidden = false;
+  elements.copyInviteButton.disabled = false;
+  elements.qrCode.replaceChildren();
+
+  if (window.QRCode) {
+    new QRCode(elements.qrCode, {
+      text: invitationUrl,
+      width: 168,
+      height: 168,
+      colorDark: "#123C7C",
+      colorLight: "#FFFFFF",
+      correctLevel: QRCode.CorrectLevel.H,
+    });
+  } else {
+    const fallback = document.createElement("p");
+    fallback.className = "qr-fallback";
+    fallback.textContent = "QR no disponible. Comparte el enlace de invitacion.";
+    elements.qrCode.appendChild(fallback);
+  }
+
+  animateElement(elements.qrPanel, "glow");
+}
+
+async function copyInvitationLink() {
+  if (!uiState.invitationUrl) {
+    showToast("Todavia no hay enlace para copiar.", "error");
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(uiState.invitationUrl);
+    showToast("Enlace de invitacion copiado.", "success");
+  } catch (error) {
+    showToast("No se pudo copiar automaticamente. Selecciona y copia el enlace.", "error");
+  }
 }
 
 function applyPlayerTheme(playerNumber) {
@@ -346,7 +511,9 @@ function updateMatchStatus(status) {
   uiState.latestStatus = status;
 
   const labels = {
+    menu: "Elige modo",
     waiting: "Esperando rival",
+    private_waiting: "Esperando invitado QR",
     active: "Partida activa",
     finished: "Partida terminada",
   };
@@ -359,6 +526,7 @@ function updateMatchStatus(status) {
 function updateFromState(state) {
   const statusChanged = uiState.latestStatus !== state.status;
 
+  showGameScreen();
   applyPlayerTheme(state.player_number);
   updateMatchStatus(state.status);
   updateTurnIndicator(state);
@@ -490,6 +658,17 @@ elements.requestStateButton.addEventListener("click", () => {
   showToast("Solicitando estado actualizado al servidor.", "info");
 });
 
+elements.joinPublicButton.addEventListener("click", joinPublicGame);
+elements.choosePrivateButton.addEventListener("click", createPrivateGame);
+
+elements.createQrRoomButton.addEventListener("click", () => {
+  createPrivateGame();
+});
+
+elements.copyInviteButton.addEventListener("click", copyInvitationLink);
+elements.cancelPublicButton.addEventListener("click", cancelMatchmaking);
+elements.cancelPrivateButton.addEventListener("click", cancelMatchmaking);
+
 elements.playAgainButton.addEventListener("click", () => {
   window.location.reload();
 });
@@ -498,7 +677,16 @@ socket.on("connect", () => {
   elements.connectionStatus.textContent = "Conectado";
   elements.connectionStatus.classList.remove("turn-waiting");
   elements.connectionStatus.classList.add("turn-active");
-  showToast("Conectado. Buscando rival automaticamente...", "info");
+
+  if (invitationRoom) {
+    showPrivateRoomPanel(true);
+    showToast(`Conectado. Uniendote a la sala QR ${invitationRoom}...`, "info");
+    socket.emit("join_private_room", { room: invitationRoom });
+    return;
+  }
+
+  showMainMenu();
+  showToast("Conectado. Elige el modo de juego para comenzar.", "info");
 });
 
 socket.on("disconnect", () => {
@@ -510,16 +698,38 @@ socket.on("disconnect", () => {
 });
 
 socket.on("connected", (data) => {
-  showToast(data.message || "Conexion aceptada por el servidor.", "info");
+  if (!invitationRoom && uiState.latestStatus === "menu") {
+    showToast(data.message || "Conexion aceptada por el servidor.", "info");
+  }
 });
 
 socket.on("queue_status", (data) => {
-  updateMatchStatus("waiting");
+  if (data.private) {
+    showPrivateRoomPanel(false);
+  } else {
+    showWaitingPublic();
+  }
   showToast(data.message || "Esperando rival.", "info");
 });
 
+socket.on("private_room_detected", (data) => {
+  showPrivateRoomPanel(true);
+  showToast(data.message || "Codigo QR detectado.", "info");
+});
+
+socket.on("private_room_created", (data) => {
+  showPrivateRoomPanel(false);
+  showQrInvite(data.room_code, data.invitation_url);
+  elements.createQrRoomButton.disabled = true;
+  elements.createQrRoomButton.textContent = "Sala QR creada";
+  showToast(data.message || "Sala QR creada.", "success");
+});
+
 socket.on("game_started", (data) => {
+  showGameScreen();
   updateMatchStatus("active");
+  elements.createQrRoomButton.disabled = true;
+  elements.copyInviteButton.disabled = true;
   showToast(`${data.message || "Partida iniciada"} Codigo: ${data.game_id.slice(0, 8)}`, "success");
 });
 
@@ -533,13 +743,21 @@ socket.on("action_result", (action) => {
 
 socket.on("error_message", (data) => {
   showToast(data.message || "Accion invalida.", "error");
+  if (uiState.latestStatus !== "active") {
+    showMainMenu();
+  }
 });
 
 socket.on("opponent_left", (data) => {
   showToast(data.message || "El rival abandono la partida.", "warning");
 });
 
+socket.on("matchmaking_cancelled", (data) => {
+  showMainMenu();
+  showToast(data.message || "Volviste al menu principal.", "info");
+});
+
 updateQuestionValues();
-updateMatchStatus("waiting");
+showMainMenu();
 elements.askButton.disabled = true;
 elements.guessButton.disabled = true;

@@ -91,6 +91,10 @@ select:focus-visible {
   outline-offset: 3px;
 }
 
+.is-hidden {
+  display: none !important;
+}
+
 /* ==============================
    Estructura principal
    ============================== */
@@ -303,6 +307,237 @@ h3 {
 .server-message.warning {
   border-color: rgba(247, 148, 29, 0.7);
   background: linear-gradient(135deg, #fff2c3, var(--color-yellow));
+}
+
+/* ==============================
+   Menu inicial de modo de juego
+   ============================== */
+.main-menu,
+.waiting-panel {
+  margin-top: 18px;
+  padding: 22px;
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 210, 46, 0.62)),
+    radial-gradient(circle at 92% 10%, rgba(228, 37, 42, 0.18), transparent 38%),
+    radial-gradient(circle at 8% 92%, rgba(0, 118, 201, 0.2), transparent 42%);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.mode-heading {
+  margin-bottom: 18px;
+}
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.mode-card {
+  position: relative;
+  display: grid;
+  min-height: 210px;
+  gap: 10px;
+  align-content: center;
+  justify-items: start;
+  padding: 24px;
+  border: 4px solid rgba(255, 255, 255, 0.86);
+  border-radius: var(--radius-lg);
+  color: var(--color-white);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease,
+    border-color 200ms ease,
+    filter 200ms ease;
+}
+
+.mode-card::after {
+  position: absolute;
+  inset: auto -18px -34px auto;
+  width: 120px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(255, 210, 46, 0.38);
+  content: "";
+}
+
+.mode-card:hover:not(:disabled) {
+  border-color: var(--color-yellow);
+  box-shadow: var(--shadow-lift), 0 0 28px rgba(255, 210, 46, 0.58);
+  transform: translateY(-7px) scale(1.02);
+}
+
+.mode-card:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+}
+
+.public-mode {
+  background:
+    linear-gradient(135deg, var(--color-red), var(--color-orange)),
+    radial-gradient(circle at 80% 10%, rgba(255, 210, 46, 0.5), transparent 42%);
+}
+
+.private-mode {
+  background:
+    linear-gradient(135deg, var(--color-blue), var(--color-dark-blue)),
+    radial-gradient(circle at 80% 10%, rgba(255, 210, 46, 0.5), transparent 42%);
+}
+
+.mode-icon {
+  display: grid;
+  width: 58px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 4px solid rgba(255, 255, 255, 0.86);
+  border-radius: 50%;
+  color: var(--color-dark-blue);
+  background: var(--color-yellow);
+  font-size: 1.15rem;
+  font-weight: 900;
+  box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.12);
+}
+
+.mode-card strong {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(1.55rem, 3vw, 2.2rem);
+  line-height: 1;
+}
+
+.mode-card span:last-child {
+  position: relative;
+  z-index: 1;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.waiting-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.waiting-panel h2 {
+  margin: 10px 0 8px;
+}
+
+.waiting-panel p {
+  margin-bottom: 0;
+  color: #26344a;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+/* ==============================
+   Emparejamiento privado por QR
+   ============================== */
+.qr-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.95fr);
+  gap: 18px;
+  align-items: stretch;
+  margin-top: 18px;
+  padding: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 210, 46, 0.62)),
+    radial-gradient(circle at 90% 20%, rgba(0, 118, 201, 0.2), transparent 42%);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.qr-copy p,
+.wifi-note {
+  margin-bottom: 0;
+  color: #26344a;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.qr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.qr-invite-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border: 2px solid rgba(18, 60, 124, 0.18);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 0 0 4px rgba(255, 210, 46, 0.28);
+}
+
+.qr-invite-card[hidden] {
+  display: none;
+}
+
+.qr-code-box {
+  display: grid;
+  width: 188px;
+  min-height: 188px;
+  place-items: center;
+  padding: 10px;
+  border: 5px solid var(--player-main);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  box-shadow: 0 12px 26px var(--player-glow);
+}
+
+.qr-code-box img,
+.qr-code-box canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+.qr-details {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.room-code {
+  display: inline-flex;
+  width: fit-content;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: var(--color-white);
+  background: var(--color-dark-blue);
+  font-size: 1.25rem;
+  letter-spacing: 0;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.18);
+}
+
+.invite-link {
+  color: var(--color-blue);
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.qr-fallback {
+  margin: 0;
+  color: var(--color-dark-blue);
+  font-weight: 900;
+  text-align: center;
 }
 
 /* ==============================
@@ -943,8 +1178,18 @@ button.disabled,
   }
 
   .game-header,
+  .qr-panel,
   .game-layout {
     grid-template-columns: 1fr;
+  }
+
+  .mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .waiting-panel {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .game-header {
@@ -974,6 +1219,15 @@ button.disabled,
   .danger-button {
     width: 100%;
   }
+
+  .qr-invite-card {
+    grid-template-columns: 1fr;
+  }
+
+  .qr-code-box {
+    width: min(220px, 100%);
+    margin: 0 auto;
+  }
 }
 
 @media (max-width: 560px) {
@@ -982,6 +1236,8 @@ button.disabled,
   }
 
   .game-header,
+  .main-menu,
+  .waiting-panel,
   .secret-card,
   .actions-panel,
   .board-panel,
