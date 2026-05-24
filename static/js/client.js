@@ -13,6 +13,8 @@ const elements = {
   matchStatus: document.querySelector("#match-status"),
   turnStatus: document.querySelector("#turn-status"),
   serverMessage: document.querySelector("#server-message"),
+  musicToggleButton: document.querySelector("#music-toggle-button"),
+  effectsToggleButton: document.querySelector("#effects-toggle-button"),
   rulesButton: document.querySelector("#rules-button"),
   leaveGameButton: document.querySelector("#leave-game-button"),
   mainMenu: document.querySelector("#main-menu"),
@@ -110,6 +112,35 @@ const QUESTION_VALUES = {
   ],
 };
 
+const AUDIO_STORAGE_KEYS = {
+  music: "adivina_quien_music_enabled",
+  effects: "adivina_quien_effects_enabled",
+};
+
+const MUSIC_VOLUME = {
+  waiting: 0.28,
+  game: 0.22,
+};
+
+const EFFECT_VOLUME = 0.62;
+
+const audioTracks = {
+  waiting: createAudioTrack("/static/audio/waiting-music.mp3", true, MUSIC_VOLUME.waiting),
+  game: createAudioTrack("/static/audio/game-music.mp3", true, MUSIC_VOLUME.game),
+};
+
+const soundEffects = {
+  click: createAudioTrack("/static/audio/click.mp3", false, EFFECT_VOLUME),
+  cardFlip: createAudioTrack("/static/audio/card-flip.mp3", false, EFFECT_VOLUME),
+  question: createAudioTrack("/static/audio/question.mp3", false, EFFECT_VOLUME),
+  correct: createAudioTrack("/static/audio/correct.mp3", false, EFFECT_VOLUME),
+  wrong: createAudioTrack("/static/audio/wrong.mp3", false, EFFECT_VOLUME),
+  victory: createAudioTrack("/static/audio/victory.mp3", false, EFFECT_VOLUME),
+  defeat: createAudioTrack("/static/audio/defeat.mp3", false, EFFECT_VOLUME),
+};
+
+const activeEffects = new Set();
+
 const uiState = {
   selectedCharacterId: null,
   selectedCharacterName: "Ninguno",
@@ -128,7 +159,40 @@ const uiState = {
   canGuess: false,
   pendingGuessCharacterId: null,
   hasSentLeaveRequest: false,
+  audioUnlocked: false,
+  musicEnabled: getStoredBoolean(AUDIO_STORAGE_KEYS.music, true),
+  effectsEnabled: getStoredBoolean(AUDIO_STORAGE_KEYS.effects, true),
+  activeMusicType: null,
+  endGameAudioPlayedFor: null,
 };
+
+function getStoredBoolean(key, fallback) {
+  try {
+    const storedValue = window.localStorage.getItem(key);
+    return storedValue === null ? fallback : storedValue === "true";
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function storeBoolean(key, value) {
+  try {
+    window.localStorage.setItem(key, String(Boolean(value)));
+  } catch (error) {
+    // Audio preferences are useful, but the game must continue without storage.
+  }
+}
+
+function createAudioTrack(src, loop = false, volume = 0.5) {
+  const track = new Audio(src);
+  track.loop = loop;
+  track.volume = volume;
+  track.preload = "auto";
+  track.addEventListener("error", () => {
+    // Missing audio files should never interrupt the game flow.
+  });
+  return track;
+}
 
 function animateElement(element, animationClass) {
   if (!element) {
@@ -145,6 +209,203 @@ function showToast(message, type = "info") {
   elements.serverMessage.classList.remove("info", "success", "error", "warning", "positive", "negative");
   elements.serverMessage.classList.add(type);
   animateElement(elements.serverMessage, type === "error" ? "shake" : "glow");
+}
+
+function enableAudio() {
+  if (uiState.audioUnlocked) {
+    return;
+  }
+
+  uiState.audioUnlocked = true;
+  updateAudioButton();
+  syncMusicToState();
+}
+
+function playSound(name) {
+  if (!uiState.audioUnlocked || !uiState.effectsEnabled) {
+    return;
+  }
+
+  const source = soundEffects[name];
+  if (!source) {
+    return;
+  }
+
+  const effect = source.cloneNode(true);
+  effect.volume = EFFECT_VOLUME;
+  activeEffects.add(effect);
+  effect.addEventListener("ended", () => activeEffects.delete(effect), { once: true });
+  effect.addEventListener("error", () => activeEffects.delete(effect), { once: true });
+  effect.play().catch(() => activeEffects.delete(effect));
+}
+
+function playMusic(type) {
+  if (!uiState.audioUnlocked || !uiState.musicEnabled || !type) {
+    return;
+  }
+
+  const track = audioTracks[type];
+  if (!track) {
+    return;
+  }
+
+  if (uiState.activeMusicType === type && !track.paused) {
+    return;
+  }
+
+  const isNewTrack = uiState.activeMusicType !== type;
+  stopMusic(false);
+  uiState.activeMusicType = type;
+  track.volume = MUSIC_VOLUME[type] || 0.24;
+
+  if (isNewTrack) {
+    track.currentTime = 0;
+  }
+
+  track.play().catch(() => {});
+}
+
+function stopMusic(reset = false) {
+  Object.values(audioTracks).forEach((track) => {
+    track.pause();
+    if (reset) {
+      track.currentTime = 0;
+    }
+  });
+  uiState.activeMusicType = null;
+}
+
+function stopAllAudio() {
+  stopMusic(true);
+  activeEffects.forEach((effect) => {
+    effect.pause();
+    effect.currentTime = 0;
+  });
+  activeEffects.clear();
+}
+
+function setAudioEnabled(value) {
+  uiState.musicEnabled = Boolean(value);
+  storeBoolean(AUDIO_STORAGE_KEYS.music, uiState.musicEnabled);
+
+  if (uiState.musicEnabled) {
+    syncMusicToState();
+  } else {
+    stopMusic(true);
+  }
+
+  updateAudioButton();
+}
+
+function setEffectsEnabled(value) {
+  uiState.effectsEnabled = Boolean(value);
+  storeBoolean(AUDIO_STORAGE_KEYS.effects, uiState.effectsEnabled);
+  updateAudioButton();
+}
+
+function getMusicTypeForStatus(status = uiState.latestStatus) {
+  if (status === "waiting" || status === "private_waiting") {
+    return "waiting";
+  }
+
+  if (status === "active") {
+    return "game";
+  }
+
+  return null;
+}
+
+function syncMusicToState() {
+  const musicType = getMusicTypeForStatus();
+
+  if (!musicType || !uiState.musicEnabled || !uiState.audioUnlocked) {
+    stopMusic(uiState.latestStatus === "menu" || uiState.latestStatus === "finished");
+    return;
+  }
+
+  playMusic(musicType);
+}
+
+function updateAudioButton() {
+  elements.musicToggleButton.textContent = uiState.musicEnabled ? "Musica: ON" : "Musica: OFF";
+  elements.effectsToggleButton.textContent = uiState.effectsEnabled ? "Efectos: ON" : "Efectos: OFF";
+
+  elements.musicToggleButton.classList.toggle("is-on", uiState.musicEnabled);
+  elements.musicToggleButton.classList.toggle("is-off", !uiState.musicEnabled);
+  elements.effectsToggleButton.classList.toggle("is-on", uiState.effectsEnabled);
+  elements.effectsToggleButton.classList.toggle("is-off", !uiState.effectsEnabled);
+
+  animateElement(elements.musicToggleButton, "pulse-on");
+  animateElement(elements.effectsToggleButton, "pulse-on");
+}
+
+function launchVictoryConfetti() {
+  if (!window.confetti) {
+    return;
+  }
+
+  const colors = ["#E4252A", "#FFD22E", "#0076C9", "#F7941D", "#FFFFFF"];
+  window.confetti({
+    particleCount: 130,
+    spread: 78,
+    origin: { y: 0.62 },
+    colors,
+  });
+  window.setTimeout(() => {
+    window.confetti({
+      particleCount: 80,
+      angle: 60,
+      spread: 62,
+      origin: { x: 0, y: 0.72 },
+      colors,
+    });
+    window.confetti({
+      particleCount: 80,
+      angle: 120,
+      spread: 62,
+      origin: { x: 1, y: 0.72 },
+      colors,
+    });
+  }, 240);
+}
+
+function handleEndGameAudio(state) {
+  const marker = `${state.game_id}:${state.you_won ? "win" : "lose"}`;
+  if (uiState.endGameAudioPlayedFor === marker) {
+    return;
+  }
+
+  uiState.endGameAudioPlayedFor = marker;
+  stopMusic(true);
+
+  if (state.you_won) {
+    playSound("victory");
+    launchVictoryConfetti();
+    return;
+  }
+
+  playSound("defeat");
+}
+
+function toggleMusic() {
+  enableAudio();
+  playSound("click");
+  setAudioEnabled(!uiState.musicEnabled);
+}
+
+function toggleEffects() {
+  enableAudio();
+  const shouldEnable = !uiState.effectsEnabled;
+
+  if (!shouldEnable) {
+    playSound("click");
+  }
+
+  setEffectsEnabled(shouldEnable);
+
+  if (shouldEnable) {
+    playSound("click");
+  }
 }
 
 function updateLeaveButtonState() {
@@ -223,8 +484,12 @@ function showGameScreen() {
 }
 
 function joinPublicGame() {
+  enableAudio();
+  playSound("click");
+
   if (uiState.latestStatus === "active") {
     showToast("Ya estas en una partida activa.", "error");
+    playSound("wrong");
     return;
   }
 
@@ -234,8 +499,12 @@ function joinPublicGame() {
 }
 
 function createPrivateGame() {
+  enableAudio();
+  playSound("click");
+
   if (uiState.latestStatus === "active") {
     showToast("No puedes crear una sala QR porque ya estas en una partida.", "error");
+    playSound("wrong");
     return;
   }
 
@@ -246,8 +515,12 @@ function createPrivateGame() {
 }
 
 function cancelMatchmaking() {
+  enableAudio();
+  playSound("click");
+
   if (uiState.latestStatus === "active") {
     showToast("No puedes volver al menu durante una partida activa.", "error");
+    playSound("wrong");
     return;
   }
 
@@ -286,8 +559,12 @@ function showQrInvite(roomCode, invitationUrl) {
 }
 
 async function copyInvitationLink() {
+  enableAudio();
+  playSound("click");
+
   if (!uiState.invitationUrl) {
     showToast("Todavia no hay enlace para copiar.", "error");
+    playSound("wrong");
     return;
   }
 
@@ -296,6 +573,7 @@ async function copyInvitationLink() {
     showToast("Enlace de invitacion copiado.", "success");
   } catch (error) {
     showToast("No se pudo copiar automaticamente. Selecciona y copia el enlace.", "error");
+    playSound("wrong");
   }
 }
 
@@ -675,6 +953,7 @@ function updateMatchStatus(status) {
   elements.matchStatus.classList.toggle("turn-active", status === "active");
   elements.matchStatus.classList.toggle("turn-waiting", status !== "active");
   updateLeaveButtonState();
+  syncMusicToState();
 }
 
 function updateFromState(state) {
@@ -684,6 +963,7 @@ function updateFromState(state) {
     uiState.currentGameId = state.game_id;
     uiState.coveredCharacterIds.clear();
     uiState.boardSortedByCovered = false;
+    uiState.endGameAudioPlayedFor = null;
     clearSelectedCharacter();
   }
   uiState.currentBoard = state.board || [];
@@ -701,6 +981,7 @@ function updateFromState(state) {
   }
 
   if (state.status === "finished") {
+    handleEndGameAudio(state);
     showEndGameModal(state);
   }
 }
@@ -765,12 +1046,15 @@ function hideEndGameModal() {
 }
 
 function showRulesModal() {
+  enableAudio();
+  playSound("click");
   elements.rulesModal.setAttribute("aria-hidden", "false");
   elements.rulesModal.classList.add("visible");
   animateElement(elements.rulesModal.querySelector(".rules-card"), "slide-up");
 }
 
 function hideRulesModal() {
+  playSound("click");
   elements.rulesModal.setAttribute("aria-hidden", "true");
   elements.rulesModal.classList.remove("visible");
 }
@@ -793,6 +1077,9 @@ function hideGuessConfirmModal() {
 }
 
 function confirmGuess() {
+  enableAudio();
+  playSound("click");
+
   if (!uiState.pendingGuessCharacterId) {
     hideGuessConfirmModal();
     return;
@@ -806,6 +1093,9 @@ function confirmGuess() {
 }
 
 function leaveCurrentGame() {
+  enableAudio();
+  playSound("click");
+
   if (!["waiting", "private_waiting", "active"].includes(uiState.latestStatus)) {
     showToast("No hay una partida o espera activa para abandonar.", "info");
     return;
@@ -821,16 +1111,21 @@ function leaveCurrentGame() {
 
   uiState.hasSentLeaveRequest = true;
   updateLeaveButtonState();
+  stopMusic(true);
   socket.emit("leave_game");
   showToast("Procesando abandono en el servidor...", "warning");
 }
 
 function handleCharacterSelection(character, selectedCard) {
+  enableAudio();
+
   if (uiState.coveredCharacterIds.has(Number(character.id))) {
     showToast("Destapa este personaje antes de seleccionarlo para adivinar.", "error");
+    playSound("wrong");
     return;
   }
 
+  playSound("click");
   uiState.selectedCharacterId = character.id;
   uiState.selectedCharacterName = character.nombre;
   elements.selectedCharacterId.value = character.id;
@@ -845,6 +1140,9 @@ function handleCharacterSelection(character, selectedCard) {
 }
 
 function toggleCharacterCovered(character, card) {
+  enableAudio();
+  playSound("cardFlip");
+
   const characterId = Number(character.id);
   const isCovered = uiState.coveredCharacterIds.has(characterId);
 
@@ -877,6 +1175,7 @@ function toggleCharacterCovered(character, card) {
 
 function markLatestAction(action) {
   if (action.type === "question") {
+    playSound(action.answer ? "correct" : "wrong");
     showToast(
       action.answer ? "Respuesta del servidor: SI." : "Respuesta del servidor: NO.",
       action.answer ? "positive" : "negative"
@@ -915,25 +1214,30 @@ elements.questionAttribute.addEventListener("change", updateQuestionValues);
 
 elements.questionForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  enableAudio();
 
   const attribute = elements.questionAttribute.value;
   const value = elements.questionValue.value;
 
   if (!attribute || value === "") {
     showToast("Selecciona una caracteristica y un valor para preguntar.", "error");
+    playSound("wrong");
     return;
   }
 
   if (uiState.latestStatus !== "active") {
     showToast("No puedes preguntar porque la partida no esta activa.", "error");
+    playSound("wrong");
     return;
   }
 
   if (!uiState.isYourTurn) {
     showToast("No puedes preguntar porque no es tu turno.", "error");
+    playSound("wrong");
     return;
   }
 
+  playSound("question");
   socket.emit("ask_question", {
     attribute,
     value: getQuestionValue(),
@@ -942,36 +1246,45 @@ elements.questionForm.addEventListener("submit", (event) => {
 
 elements.guessForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  enableAudio();
 
   if (!uiState.selectedCharacterId) {
     showToast("Selecciona un personaje del tablero antes de adivinar.", "error");
+    playSound("wrong");
     return;
   }
 
   if (uiState.latestStatus !== "active") {
     showToast("No puedes adivinar porque la partida no esta activa.", "error");
+    playSound("wrong");
     return;
   }
 
   if (!uiState.isYourTurn) {
     showToast("No puedes adivinar porque no es tu turno.", "error");
+    playSound("wrong");
     return;
   }
 
   if (!uiState.canGuess) {
     showToast("Ya usaste tu unica oportunidad para adivinar.", "error");
+    playSound("wrong");
     return;
   }
 
   if (!uiState.boardIds.has(Number(uiState.selectedCharacterId))) {
     showToast("El personaje seleccionado no pertenece al tablero actual.", "error");
+    playSound("wrong");
     return;
   }
 
+  playSound("click");
   showGuessConfirmModal();
 });
 
 elements.requestStateButton.addEventListener("click", () => {
+  enableAudio();
+  playSound("click");
   sortBoardByCovered();
 });
 
@@ -986,10 +1299,15 @@ elements.copyInviteButton.addEventListener("click", copyInvitationLink);
 elements.cancelPublicButton.addEventListener("click", cancelMatchmaking);
 elements.cancelPrivateButton.addEventListener("click", cancelMatchmaking);
 elements.confirmGuessButton.addEventListener("click", confirmGuess);
-elements.cancelGuessButton.addEventListener("click", hideGuessConfirmModal);
+elements.cancelGuessButton.addEventListener("click", () => {
+  playSound("click");
+  hideGuessConfirmModal();
+});
 elements.rulesButton.addEventListener("click", showRulesModal);
 elements.closeRulesButton.addEventListener("click", hideRulesModal);
 elements.leaveGameButton.addEventListener("click", leaveCurrentGame);
+elements.musicToggleButton.addEventListener("click", toggleMusic);
+elements.effectsToggleButton.addEventListener("click", toggleEffects);
 
 elements.rulesModal.addEventListener("click", (event) => {
   if (event.target === elements.rulesModal) {
@@ -998,8 +1316,14 @@ elements.rulesModal.addEventListener("click", (event) => {
 });
 
 elements.playAgainButton.addEventListener("click", () => {
+  enableAudio();
+  playSound("click");
+  stopAllAudio();
   window.location.reload();
 });
+
+document.addEventListener("pointerdown", enableAudio, { once: true });
+document.addEventListener("keydown", enableAudio, { once: true });
 
 socket.on("connect", () => {
   elements.connectionStatus.textContent = "Conectado";
@@ -1022,6 +1346,7 @@ socket.on("disconnect", () => {
   elements.connectionStatus.classList.remove("turn-active");
   elements.connectionStatus.classList.add("turn-waiting");
   updateMatchStatus("waiting");
+  stopAllAudio();
   showToast("Se perdio la conexion con el servidor.", "error");
 });
 
@@ -1050,6 +1375,7 @@ socket.on("private_room_created", (data) => {
   showQrInvite(data.room_code, data.invitation_url);
   elements.createQrRoomButton.disabled = true;
   elements.createQrRoomButton.textContent = "Sala QR creada";
+  playSound("correct");
   showToast(data.message || "Sala QR creada.", "success");
 });
 
@@ -1058,6 +1384,7 @@ socket.on("game_started", (data) => {
   updateMatchStatus("active");
   elements.createQrRoomButton.disabled = true;
   elements.copyInviteButton.disabled = true;
+  playSound("correct");
   showToast(`${data.message || "Partida iniciada"} Codigo: ${data.game_id.slice(0, 8)}`, "success");
 });
 
@@ -1074,6 +1401,7 @@ socket.on("error_message", (data) => {
   elements.confirmGuessButton.disabled = false;
   uiState.hasSentLeaveRequest = false;
   updateLeaveButtonState();
+  playSound("wrong");
   showToast(data.message || "Accion invalida.", "error");
   if (uiState.latestStatus !== "active") {
     showMainMenu();
@@ -1090,6 +1418,7 @@ socket.on("matchmaking_cancelled", (data) => {
 });
 
 socket.on("left_game", (data) => {
+  stopAllAudio();
   hideEndGameModal();
   hideGuessConfirmModal();
   showMainMenu();
@@ -1097,6 +1426,7 @@ socket.on("left_game", (data) => {
 });
 
 updateQuestionValues();
+updateAudioButton();
 showMainMenu();
 elements.askButton.disabled = true;
 elements.guessButton.disabled = true;

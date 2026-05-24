@@ -138,6 +138,34 @@ select:focus-visible {
   min-width: 170px;
 }
 
+.audio-toggle {
+  min-width: 132px;
+  border: 2px solid rgba(255, 210, 46, 0.68);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(255, 210, 46, 0.78));
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.42),
+    0 8px 18px rgba(18, 60, 124, 0.16);
+}
+
+.audio-toggle.is-on {
+  color: var(--color-white);
+  background: linear-gradient(135deg, var(--color-blue), var(--color-dark-blue));
+  box-shadow:
+    0 0 18px rgba(0, 118, 201, 0.34),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.18);
+}
+
+.audio-toggle.is-off {
+  color: #687286;
+  background: linear-gradient(135deg, #eef2f7, #d8deea);
+  box-shadow: inset 0 0 0 2px rgba(18, 60, 124, 0.08);
+}
+
+.audio-toggle.pulse-on {
+  animation: audio-toggle-pop 320ms ease both;
+}
+
 .game-header {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
@@ -1418,6 +1446,20 @@ button.disabled,
 
   50% {
     box-shadow: var(--shadow-soft), 0 0 34px var(--player-glow);
+  }
+}
+
+@keyframes audio-toggle-pop {
+  0% {
+    transform: scale(0.96);
+  }
+
+  55% {
+    transform: scale(1.06);
+  }
+
+  100% {
+    transform: scale(1);
   }
 }
 

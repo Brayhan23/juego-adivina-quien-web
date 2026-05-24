@@ -1,5 +1,6 @@
 import unittest
 from collections import Counter
+from pathlib import Path
 
 import app as server
 from characters import CHARACTERS
@@ -305,6 +306,39 @@ class MultipleGamesTest(unittest.TestCase):
         for character in CHARACTERS:
             self.assertEqual(character["imagen"], expected_images[character["nombre"]])
             self.assertTrue(character["avatar"])
+
+    def test_audio_controls_and_confetti_are_wired_in_static_files(self):
+        html = Path("templates/index.html").read_text(encoding="utf-8")
+        client_js = Path("static/js/client.js").read_text(encoding="utf-8")
+
+        self.assertIn("music-toggle-button", html)
+        self.assertIn("effects-toggle-button", html)
+        self.assertIn("canvas-confetti@1.9.3", html)
+
+        for audio_file in [
+            "waiting-music.mp3",
+            "game-music.mp3",
+            "click.mp3",
+            "card-flip.mp3",
+            "question.mp3",
+            "correct.mp3",
+            "wrong.mp3",
+            "victory.mp3",
+            "defeat.mp3",
+        ]:
+            self.assertIn(f"/static/audio/{audio_file}", client_js)
+
+        for function_name in [
+            "enableAudio",
+            "playSound",
+            "playMusic",
+            "stopMusic",
+            "stopAllAudio",
+            "setAudioEnabled",
+            "updateAudioButton",
+            "launchVictoryConfetti",
+        ]:
+            self.assertIn(f"function {function_name}", client_js)
 
     def test_two_qr_games_are_isolated(self):
         creator_one = server.socketio.test_client(server.app)

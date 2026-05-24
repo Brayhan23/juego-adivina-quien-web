@@ -218,13 +218,13 @@ CHARACTERS = [
         "avatar": "R",
         "imagen": "/static/img/characters/rafael.png",
         "genero": "masculino",
-        "gafas": True,
+        "gafas": False,
         "sombrero": False,
         "barba": False,
         "bigote": True,
         "cabello_largo": False,
         "color_cabello": "rojo",
-        "accesorio": "corbata",
+        "accesorio": "collar",
     },
 ]
 
