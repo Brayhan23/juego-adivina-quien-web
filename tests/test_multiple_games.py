@@ -281,6 +281,31 @@ class MultipleGamesTest(unittest.TestCase):
             "corbata": 4,
         }))
 
+    def test_characters_keep_avatar_fallback_and_image_path(self):
+        expected_images = {
+            "Ana": "/static/img/characters/ana.png",
+            "Bruno": "/static/img/characters/bruno.png",
+            "Carla": "/static/img/characters/carla.png",
+            "Diego": "/static/img/characters/diego.png",
+            "Elena": "/static/img/characters/elena.png",
+            "Felipe": "/static/img/characters/felipe.png",
+            "Gabriela": "/static/img/characters/gabriela.png",
+            "Hector": "/static/img/characters/hector.png",
+            "Isabel": "/static/img/characters/isabel.png",
+            "Jorge": "/static/img/characters/jorge.png",
+            "Laura": "/static/img/characters/laura.png",
+            "Mateo": "/static/img/characters/mateo.png",
+            "Natalia": "/static/img/characters/natalia.png",
+            "Oscar": "/static/img/characters/oscar.png",
+            "Paula": "/static/img/characters/paula.png",
+            "Rafael": "/static/img/characters/rafael.png",
+        }
+
+        self.assertEqual(len(CHARACTERS), 16)
+        for character in CHARACTERS:
+            self.assertEqual(character["imagen"], expected_images[character["nombre"]])
+            self.assertTrue(character["avatar"])
+
     def test_two_qr_games_are_isolated(self):
         creator_one = server.socketio.test_client(server.app)
         self._create_qr_room(creator_one)

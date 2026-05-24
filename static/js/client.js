@@ -329,6 +329,38 @@ function createTag(text, extraClass = "") {
   return tag;
 }
 
+function renderCharacterPortrait(container, character, extraImageClass = "") {
+  container.replaceChildren();
+  container.classList.remove("image-loaded", "image-fallback");
+
+  const fallback = document.createElement("span");
+  fallback.className = "avatar-fallback";
+  fallback.textContent = character.avatar || "?";
+
+  if (!character.imagen) {
+    container.classList.add("image-fallback");
+    container.appendChild(fallback);
+    return;
+  }
+
+  const image = document.createElement("img");
+  image.className = `character-image ${extraImageClass}`.trim();
+  image.src = character.imagen;
+  image.alt = `Retrato de ${character.nombre}`;
+  image.loading = "lazy";
+  image.decoding = "async";
+  image.addEventListener("load", () => {
+    container.classList.add("image-loaded");
+  });
+  image.addEventListener("error", () => {
+    container.classList.remove("image-loaded");
+    container.classList.add("image-fallback");
+    container.replaceChildren(fallback);
+  });
+
+  container.appendChild(image);
+}
+
 function clearSelectedCharacter() {
   uiState.selectedCharacterId = null;
   uiState.selectedCharacterName = "Ninguno";
@@ -409,21 +441,13 @@ function renderBoard(board = []) {
     const card = fragment.querySelector(".character-card");
     const avatar = fragment.querySelector(".character-avatar");
     const name = fragment.querySelector(".character-name");
-    const tagRow = fragment.querySelector(".tag-row");
 
     card.dataset.characterId = character.id;
     card.dataset.characterName = character.nombre;
     card.title = "Clic para tapar/destapar";
     card.setAttribute("aria-label", `${character.nombre}. Clic para tapar o destapar.`);
-    avatar.textContent = character.avatar;
+    renderCharacterPortrait(avatar, character);
     name.textContent = character.nombre;
-
-    tagRow.append(
-      createTag(character.genero),
-      createTag(character.color_cabello),
-      createTag(character.gafas ? "gafas" : "sin gafas"),
-      createTag(character.sombrero ? "sombrero" : "sin sombrero")
-    );
 
     const isCovered = uiState.coveredCharacterIds.has(Number(character.id));
 
@@ -499,7 +523,7 @@ function renderSecretCharacter(character) {
     return;
   }
 
-  elements.secretAvatar.textContent = character.avatar;
+  renderCharacterPortrait(elements.secretAvatar, character, "secret-character-image");
   elements.secretName.textContent = character.nombre;
   elements.secretTraits.replaceChildren(
     createTrait("Genero", character.genero),

@@ -590,6 +590,7 @@ h3 {
   box-shadow:
     0 12px 28px var(--player-glow),
     inset 0 -10px 0 rgba(0, 0, 0, 0.08);
+  overflow: hidden;
 }
 
 .secret-card h2 {
@@ -786,11 +787,11 @@ button.disabled,
 .character-card {
   position: relative;
   display: grid;
-  min-height: 178px;
-  gap: 8px;
+  min-height: 218px;
+  gap: 10px;
   align-content: center;
   justify-items: center;
-  padding: 14px 10px;
+  padding: 16px 12px;
   border: 4px solid rgba(18, 60, 124, 0.2);
   border-radius: var(--radius-md);
   color: var(--color-dark-blue);
@@ -835,21 +836,55 @@ button.disabled,
 
 .character-avatar {
   display: grid;
-  width: 76px;
+  width: min(128px, 82%);
   aspect-ratio: 1;
   place-items: center;
   border: 4px solid var(--color-yellow);
-  border-radius: 50%;
+  border-radius: 22px;
   color: var(--color-white);
   background: linear-gradient(135deg, var(--color-dark-blue), var(--color-blue));
-  font-size: 2.45rem;
+  font-size: 3.2rem;
   font-weight: 900;
   box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.13);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.character-avatar.image-loaded,
+.secret-avatar.image-loaded {
+  background:
+    linear-gradient(135deg, rgba(255, 210, 46, 0.95), rgba(255, 255, 255, 0.94)),
+    radial-gradient(circle at top, rgba(247, 148, 29, 0.28), transparent 62%);
+}
+
+.character-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  border-radius: inherit;
+  filter: saturate(1.08) contrast(1.02);
+}
+
+.secret-character-image {
+  object-fit: cover;
+  object-position: center top;
+}
+
+.avatar-fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--color-white);
+  font: inherit;
+  font-weight: 900;
 }
 
 .character-name {
   color: var(--color-black);
-  font-size: 1.08rem;
+  font-size: 1.12rem;
   line-height: 1.1;
   text-align: center;
 }
@@ -876,7 +911,7 @@ button.disabled,
 
 .cover-hint {
   color: var(--color-gray);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -890,12 +925,13 @@ button.disabled,
 }
 
 .guess-select-button {
-  min-height: 34px;
-  padding: 7px 12px;
+  width: min(112px, 88%);
+  min-height: 38px;
+  padding: 8px 16px;
   border-radius: 999px;
   color: var(--color-white);
   background: var(--player-main);
-  font-size: 0.76rem;
+  font-size: 0.8rem;
   font-weight: 900;
   cursor: pointer;
   box-shadow:
@@ -971,8 +1007,7 @@ button.disabled,
 }
 
 .character-card.covered .character-avatar,
-.character-card.covered .character-name,
-.character-card.covered .tag-row {
+.character-card.covered .character-name {
   opacity: 0.34;
   filter: grayscale(0.9);
 }
@@ -1493,7 +1528,7 @@ button.disabled,
   }
 
   .character-card {
-    min-height: 160px;
+    min-height: 198px;
   }
 
   .panel-heading {
@@ -1559,17 +1594,14 @@ button.disabled,
   }
 
   .character-card {
-    min-height: 150px;
+    min-height: 176px;
     padding: 12px 8px;
   }
 
   .character-avatar {
-    width: 62px;
-    font-size: 2rem;
-  }
-
-  .tag {
-    font-size: 0.64rem;
+    width: min(104px, 84%);
+    border-radius: 18px;
+    font-size: 2.55rem;
   }
 
   .history-list {
