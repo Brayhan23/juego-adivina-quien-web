@@ -117,11 +117,25 @@ select:focus-visible {
 .history-panel,
 .server-message,
 .action-card,
-.game-over-card {
+.game-over-card,
+.rules-card {
   border: 2px solid var(--panel-border);
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+}
+
+.top-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.top-actions .ghost-button,
+.top-actions .danger-button {
+  min-width: 170px;
 }
 
 .game-header {
@@ -749,12 +763,24 @@ button.disabled,
   z-index: 1;
 }
 
+.board-helper {
+  margin: 6px 0 0;
+  color: rgba(18, 60, 124, 0.74);
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
 .characters-grid {
   position: relative;
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 14px;
+}
+
+.characters-grid.board-reorder {
+  animation: board-reorder 520ms ease both;
 }
 
 .character-card {
@@ -779,7 +805,11 @@ button.disabled,
     border-color 190ms ease,
     box-shadow 190ms ease,
     filter 190ms ease,
-    opacity 190ms ease;
+  opacity 190ms ease;
+}
+
+.character-card[role="button"] {
+  user-select: none;
 }
 
 .character-card::after {
@@ -796,6 +826,11 @@ button.disabled,
   border-color: var(--player-main);
   box-shadow: var(--shadow-lift), 0 0 22px var(--player-glow);
   transform: translateY(-8px) scale(1.035);
+}
+
+.character-card:focus-visible {
+  outline: 4px solid rgba(255, 210, 46, 0.95);
+  outline-offset: 4px;
 }
 
 .character-avatar {
@@ -839,6 +874,49 @@ button.disabled,
   overflow-wrap: anywhere;
 }
 
+.cover-hint {
+  color: var(--color-gray);
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.card-actions {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.guess-select-button {
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  color: var(--color-white);
+  background: var(--player-main);
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.18),
+    0 7px 14px var(--player-glow);
+  transition: transform 160ms ease, filter 160ms ease, opacity 160ms ease;
+}
+
+.guess-select-button:hover:not(:disabled) {
+  filter: saturate(1.08) brightness(1.04);
+  transform: translateY(-2px);
+}
+
+.guess-select-button:disabled {
+  color: #6f7786;
+  background: #d7dde8;
+  cursor: not-allowed;
+  opacity: 0.72;
+  box-shadow: none;
+}
+
 .character-card.selected,
 .character-card.card-selected,
 .character-card.opponent-target {
@@ -867,6 +945,63 @@ button.disabled,
   background: var(--color-red);
   content: "";
   transform: rotate(-18deg);
+}
+
+.character-card.covered,
+.character-card.card-covered {
+  border-color: rgba(18, 60, 124, 0.36);
+  background:
+    linear-gradient(180deg, rgba(18, 60, 124, 0.82), rgba(18, 60, 124, 0.94)),
+    repeating-linear-gradient(45deg, rgba(255, 210, 46, 0.22) 0 10px, rgba(247, 148, 29, 0.22) 10px 20px);
+  box-shadow:
+    inset 0 10px 28px rgba(0, 0, 0, 0.28),
+    0 8px 18px rgba(18, 60, 124, 0.2);
+  filter: saturate(0.72);
+  opacity: 0.78;
+  transform: perspective(600px) rotateX(10deg) translateY(8px) scale(0.97);
+}
+
+.character-card.covered:hover:not(:disabled),
+.character-card.card-covered:hover:not(:disabled) {
+  border-color: var(--color-yellow);
+  box-shadow:
+    inset 0 10px 28px rgba(0, 0, 0, 0.3),
+    0 0 24px rgba(255, 210, 46, 0.42);
+  transform: perspective(600px) rotateX(4deg) translateY(2px) scale(0.99);
+}
+
+.character-card.covered .character-avatar,
+.character-card.covered .character-name,
+.character-card.covered .tag-row {
+  opacity: 0.34;
+  filter: grayscale(0.9);
+}
+
+.character-card.covered .cover-hint {
+  color: var(--color-yellow);
+}
+
+.discarded-badge {
+  position: absolute;
+  inset: 44% 8px auto;
+  z-index: 4;
+  display: none;
+  justify-content: center;
+  padding: 8px 6px;
+  border: 3px solid var(--color-yellow);
+  border-radius: 999px;
+  color: var(--color-white);
+  background: linear-gradient(135deg, var(--color-red), var(--color-orange));
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+  transform: rotate(-12deg);
+}
+
+.character-card.covered .discarded-badge,
+.character-card.card-covered .discarded-badge {
+  display: flex;
 }
 
 .character-card.correct {
@@ -936,6 +1071,19 @@ button.disabled,
   background: rgba(255, 239, 196, 0.9);
 }
 
+.history-item.self {
+  box-shadow: 0 8px 18px rgba(18, 60, 124, 0.12), inset 0 0 0 2px rgba(255, 210, 46, 0.32);
+}
+
+.history-item.rival {
+  border-left-color: var(--color-orange);
+  background: rgba(255, 245, 218, 0.9);
+}
+
+.history-item.system {
+  border-left-color: var(--color-dark-blue);
+}
+
 /* ==============================
    Modal final
    ============================== */
@@ -950,6 +1098,110 @@ button.disabled,
   background: rgba(9, 20, 43, 0);
   opacity: 0;
   transition: opacity 260ms ease, background 260ms ease;
+}
+
+.guess-confirm-modal,
+.rules-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  pointer-events: none;
+  background: rgba(9, 20, 43, 0);
+  opacity: 0;
+  transition: opacity 260ms ease, background 260ms ease;
+}
+
+.guess-confirm-modal.visible,
+.rules-modal.visible {
+  pointer-events: auto;
+  background: rgba(9, 20, 43, 0.68);
+  opacity: 1;
+}
+
+.guess-confirm-card,
+.rules-card {
+  width: min(560px, 100%);
+  padding: 28px;
+  border: 2px solid rgba(255, 210, 46, 0.72);
+  border-radius: var(--radius-lg);
+  text-align: center;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 210, 46, 0.86)),
+    radial-gradient(circle at top right, var(--player-glow), transparent 55%);
+  box-shadow: var(--shadow-soft), 0 0 34px var(--player-glow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.rules-modal {
+  z-index: 18;
+}
+
+.rules-card {
+  width: min(780px, 100%);
+  max-height: min(760px, calc(100vh - 44px));
+  overflow: auto;
+  text-align: left;
+}
+
+.rules-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.rules-card h2 {
+  margin: 12px 0 18px;
+  font-size: clamp(1.9rem, 5vw, 3rem);
+}
+
+.rules-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding-left: 24px;
+}
+
+.rules-list li {
+  color: #26344a;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.rules-list strong {
+  color: var(--color-dark-blue);
+}
+
+.rules-list span {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-red);
+  font-weight: 900;
+}
+
+.guess-confirm-card h2 {
+  margin: 16px 0 10px;
+  font-size: clamp(1.9rem, 6vw, 3rem);
+}
+
+.guess-confirm-card p {
+  color: #26344a;
+  font-size: 1.05rem;
+  font-weight: 900;
+  line-height: 1.45;
+}
+
+.confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 20px;
 }
 
 .game-over-modal.visible {
@@ -1020,6 +1272,10 @@ button.disabled,
   animation: bounce 420ms cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
 }
 
+.flip-down {
+  animation: flip-down 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
 .glow {
   animation: glow 1.25s ease-in-out both;
 }
@@ -1043,6 +1299,23 @@ button.disabled,
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes board-reorder {
+  0% {
+    filter: saturate(0.9);
+    transform: translateY(10px) scale(0.985);
+  }
+
+  55% {
+    filter: saturate(1.16);
+    transform: translateY(-4px) scale(1.01);
+  }
+
+  100% {
+    filter: saturate(1);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -1085,6 +1358,20 @@ button.disabled,
 
   100% {
     transform: scale(1);
+  }
+}
+
+@keyframes flip-down {
+  0% {
+    transform: perspective(600px) rotateX(0) translateY(0) scale(1);
+  }
+
+  55% {
+    transform: perspective(600px) rotateX(18deg) translateY(12px) scale(0.95);
+  }
+
+  100% {
+    transform: perspective(600px) rotateX(10deg) translateY(8px) scale(0.97);
   }
 }
 
@@ -1218,6 +1505,15 @@ button.disabled,
   .primary-button,
   .danger-button {
     width: 100%;
+  }
+
+  .top-actions {
+    justify-content: stretch;
+  }
+
+  .top-actions .ghost-button,
+  .top-actions .danger-button {
+    min-width: 0;
   }
 
   .qr-invite-card {

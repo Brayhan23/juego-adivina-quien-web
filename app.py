@@ -236,6 +236,13 @@ def emit_private_states(game):
         emit_private_state(game, player_id)
 
 
+def emit_action_result(game, action):
+    for player_id in game.player_ids:
+        public_action = game.get_action_for_player(action, player_id)
+        if public_action:
+            socketio.emit("action_result", public_action, to=player_id)
+
+
 def start_game(game):
     for player_id in game.player_ids:
         # The room name is the game UUID. Broadcasts to room=game.id can only
@@ -288,6 +295,19 @@ def remove_player_from_server(player_id):
             game_threads.pop(game_id, None)
 
     return removed_game
+
+
+def remove_game_from_server(game_id):
+    with state_lock:
+        removed_game = active_games.pop(game_id, None)
+        if not removed_game:
+            return None
+
+        for sid in removed_game.player_ids:
+            player_to_game.pop(sid, None)
+
+        game_threads.pop(game_id, None)
+        return removed_game
 
 
 def emit_error(message):
@@ -387,6 +407,44 @@ def handle_disconnect():
     emit_private_state(game, opponent)
 
 
+@socketio.on("leave_game")
+def handle_leave_game():
+    sid = request.sid
+    game = get_game_for_player(sid)
+
+    if not game:
+        with state_lock:
+            remove_from_waiting_queue(sid)
+            remove_private_room_for_creator(sid)
+
+        emit(
+            "left_game",
+            {"message": "Saliste del emparejamiento y volviste al menu principal."},
+        )
+        return
+
+    try:
+        action = game.leave_game(sid)
+    except ValueError as error:
+        emit_error(str(error))
+        return
+
+    opponent = game._get_opponent_id(sid)
+    emit_action_result(game, action)
+    emit_private_states(game)
+    socketio.emit(
+        "opponent_left",
+        {"message": "El rival abandono la partida. Has ganado por abandono."},
+        to=opponent,
+    )
+    socketio.emit(
+        "left_game",
+        {"message": "Abandonaste la partida y volviste al menu principal."},
+        to=sid,
+    )
+    remove_game_from_server(game.id)
+
+
 @socketio.on("ask_question")
 def handle_ask_question(data):
     sid = request.sid
@@ -404,9 +462,10 @@ def handle_ask_question(data):
         emit_error(str(error))
         return
 
-    # The action result is emitted only to this game's room; then each socket
-    # receives its own private state, preserving secrets and per-player numbers.
-    socketio.emit("action_result", action, room=game.id)
+    # Each player receives only the version of the action that belongs to their
+    # personal history. Opponent questions are not emitted as if they were own
+    # activity, while final/system events remain clearly classified.
+    emit_action_result(game, action)
     emit_private_states(game)
 
 
@@ -426,7 +485,7 @@ def handle_guess_character(data):
         emit_error(str(error))
         return
 
-    socketio.emit("action_result", action, room=game.id)
+    emit_action_result(game, action)
     emit_private_states(game)
 
 

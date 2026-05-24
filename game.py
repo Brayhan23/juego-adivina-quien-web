@@ -20,8 +20,19 @@ QUESTION_ATTRIBUTES = {
     "accesorio",
 } | BOOLEAN_ATTRIBUTES
 
+ALLOWED_ACCESSORIES = {
+    "aretes",
+    "bufanda",
+    "collar",
+    "corbata",
+}
+
 ALLOWED_ATTRIBUTE_VALUES = {
-    attribute: {character[attribute] for character in CHARACTERS}
+    attribute: (
+        ALLOWED_ACCESSORIES
+        if attribute == "accesorio"
+        else {character[attribute] for character in CHARACTERS}
+    )
     for attribute in QUESTION_ATTRIBUTES
 }
 
@@ -40,6 +51,7 @@ class GameSession:
         self.history = []
         self.status = "active"
         self.winner = None
+        self.guess_attempts = set()
         self.lock = threading.Lock()
 
     def _normalize_player(self, player):
@@ -78,7 +90,12 @@ class GameSession:
             "is_your_turn": self.current_turn == player_id,
             "winner_player_number": self._get_player_number(self.winner) if self.winner else None,
             "you_won": self.winner == player_id,
-            "history": [self._get_public_action(action) for action in self.history],
+            "can_guess": player_id not in self.guess_attempts and self.status == "active",
+            "used_guess_player_numbers": [
+                self._get_player_number(guesser_id)
+                for guesser_id in self.guess_attempts
+            ],
+            "history": self._get_public_history(player_id),
         }
 
     def ask_question(self, player_id, attribute, value):
@@ -100,32 +117,57 @@ class GameSession:
             self.history.append(action)
             self.switch_turn()
 
-            return self._get_public_action(action)
+            return deepcopy(action)
 
     def guess_character(self, player_id, character_id):
         with self.lock:
             self._validate_action(player_id)
             self._validate_character_id(character_id)
+            self._validate_guess_attempt(player_id)
 
             opponent_id = self._get_opponent_id(player_id)
             opponent_secret = self.secret_characters[opponent_id]
             is_correct = opponent_secret["id"] == character_id
+            guessed_character = self._get_character_by_id(character_id)
+            winner_id = player_id if is_correct else opponent_id
 
+            self.guess_attempts.add(player_id)
             action = {
                 "type": "guess",
                 "player_id": player_id,
                 "character_id": character_id,
+                "character_name": guessed_character["nombre"],
                 "answer": is_correct,
+                "winner_id": winner_id,
+                "ended_game": True,
             }
             self.history.append(action)
 
-            if is_correct:
-                self.status = "finished"
-                self.winner = player_id
-            else:
-                self.switch_turn()
+            self.status = "finished"
+            self.winner = winner_id
 
-            return self._get_public_action(action)
+            return deepcopy(action)
+
+    def leave_game(self, player_id):
+        with self.lock:
+            self._validate_player(player_id)
+
+            if self.status == "finished":
+                raise ValueError("La partida ya termino.")
+
+            opponent_id = self._get_opponent_id(player_id)
+            action = {
+                "type": "leave",
+                "player_id": player_id,
+                "winner_id": opponent_id,
+                "message": "El jugador abandono la partida.",
+                "ended_game": True,
+            }
+            self.history.append(action)
+            self.status = "finished"
+            self.winner = opponent_id
+
+            return deepcopy(action)
 
     def switch_turn(self):
         self.current_turn = self._get_opponent_id(self.current_turn)
@@ -163,6 +205,10 @@ class GameSession:
         if character_id not in {character["id"] for character in self.board}:
             raise ValueError("El personaje no existe en el tablero.")
 
+    def _validate_guess_attempt(self, player_id):
+        if player_id in self.guess_attempts:
+            raise ValueError("Ya usaste tu unica oportunidad para adivinar.")
+
     def _validate_player(self, player_id):
         if player_id not in self.player_ids:
             raise ValueError("El jugador no pertenece a esta partida.")
@@ -175,18 +221,57 @@ class GameSession:
         self._validate_player(player_id)
         return self.player_ids.index(player_id) + 1
 
+    def _get_character_by_id(self, character_id):
+        for character in self.board:
+            if character["id"] == character_id:
+                return character
+
+        raise ValueError("El personaje no existe en el tablero.")
+
     def _get_public_players(self):
         return [
             {"number": index + 1, "name": player["name"]}
             for index, player in enumerate(self.players)
         ]
 
-    def _get_public_action(self, action):
+    def get_action_for_player(self, action, player_id):
+        self._validate_player(player_id)
+        return self._get_public_action(action, player_id)
+
+    def _get_public_history(self, player_id):
+        history = []
+
+        for action in self.history:
+            public_action = self._get_public_action(action, player_id)
+            if public_action:
+                history.append(public_action)
+
+        return history
+
+    def _get_public_action(self, action, viewer_id):
         public_action = deepcopy(action)
         player_id = public_action.pop("player_id", None)
 
         if player_id in self.player_ids:
             public_action["player_number"] = self._get_player_number(player_id)
+            if player_id == viewer_id:
+                public_action["actor_scope"] = "self"
+                public_action["actor_label"] = "Tu"
+            else:
+                public_action["actor_scope"] = "rival"
+                public_action["actor_label"] = "Rival"
+
+        if public_action.get("type") == "question" and player_id != viewer_id:
+            return None
+
+        winner_id = public_action.pop("winner_id", None)
+        if winner_id in self.player_ids:
+            public_action["winner_player_number"] = self._get_player_number(winner_id)
+            public_action["you_won_action"] = winner_id == viewer_id
+
+        if "actor_scope" not in public_action:
+            public_action["actor_scope"] = "system"
+            public_action["actor_label"] = "Sistema"
 
         return public_action
 

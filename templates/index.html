@@ -31,6 +31,11 @@
             <strong id="turn-status" class="status-pill turn-waiting">Turno del rival</strong>
           </div>
         </section>
+
+        <nav class="top-actions" aria-label="Acciones generales">
+          <button id="rules-button" class="ghost-button" type="button">C&oacute;mo se juega</button>
+          <button id="leave-game-button" class="danger-button" type="button">Abandonar partida</button>
+        </nav>
       </header>
 
       <section id="server-message" class="server-message glow" role="status" aria-live="polite">
@@ -152,18 +157,6 @@
                 <option value="bufanda">Bufanda</option>
                 <option value="collar">Collar</option>
                 <option value="corbata">Corbata</option>
-                <option value="broche">Broche</option>
-                <option value="audifonos">Audifonos</option>
-                <option value="lazo">Lazo</option>
-                <option value="reloj">Reloj</option>
-                <option value="pulsera">Pulsera</option>
-                <option value="panuelo">Panuelo</option>
-                <option value="diadema">Diadema</option>
-                <option value="mochila">Mochila</option>
-                <option value="flor">Flor</option>
-                <option value="chaleco">Chaleco</option>
-                <option value="bolso">Bolso</option>
-                <option value="camara">Camara</option>
               </select>
 
               <button id="ask-button" class="primary-button" type="submit">Preguntar</button>
@@ -188,8 +181,9 @@
             <div>
               <span class="section-kicker">Tablero</span>
               <h2>Personajes disponibles</h2>
+              <p class="board-helper">Mueve los personajes descartados al final.</p>
             </div>
-            <button id="request-state-button" class="ghost-button" type="button">Actualizar</button>
+            <button id="request-state-button" class="ghost-button" type="button">Ordenar tablero</button>
           </div>
 
           <div id="characters-board" class="characters-grid">
@@ -207,7 +201,7 @@
         <aside class="history-panel" aria-label="Historial de acciones">
           <div class="panel-heading">
             <span class="section-kicker">Historial</span>
-            <h2>Actividad</h2>
+            <h2>Mi actividad y sistema</h2>
           </div>
 
           <div id="history-list" class="history-list">
@@ -229,12 +223,65 @@
       </div>
     </section>
 
+    <section id="guess-confirm-modal" class="guess-confirm-modal" aria-hidden="true">
+      <div class="guess-confirm-card slide-up">
+        <p class="section-kicker">Unica oportunidad</p>
+        <h2>Confirmar adivinanza</h2>
+        <p id="guess-confirm-message">
+          Recuerda que solo tienes 1 oportunidad para adivinar. Si fallas, pierdes automaticamente.
+        </p>
+        <div class="confirm-actions">
+          <button id="confirm-guess-button" class="danger-button" type="button">Si, adivinar</button>
+          <button id="cancel-guess-button" class="ghost-button" type="button">Cancelar</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="rules-modal" class="rules-modal" aria-hidden="true">
+      <div class="rules-card slide-up">
+        <div class="rules-heading">
+          <p class="section-kicker">Reglas</p>
+          <button id="close-rules-button" class="ghost-button" type="button">Cerrar</button>
+        </div>
+        <h2>&iquest;C&oacute;mo se juega?</h2>
+
+        <ol class="rules-list">
+          <li>
+            <strong>Haz una pregunta:</strong>
+            En tu turno, preguntale a tu oponente sobre una caracteristica fisica del personaje que esta oculto. Las preguntas deben ser cerradas y responderse con si o no.
+            <span>Ejemplos: "Tu personaje usa gafas?" o "Tu personaje tiene el cabello rubio?"</span>
+          </li>
+          <li>
+            <strong>Descarta y baja fichas:</strong>
+            Basandote en la respuesta de tu oponente, baja o tapa en tu tablero todos los personajes que no cumplan con esa caracteristica.
+          </li>
+          <li>
+            <strong>Pasa el turno:</strong>
+            Despues de cada pregunta valida, el turno pasa al otro jugador.
+          </li>
+          <li>
+            <strong>Adivina:</strong>
+            Cuando creas estar seguro de quien es el personaje de tu oponente, puedes intentar adivinar en tu turno.
+            <span>Ejemplo: "Tu personaje es Ana?"</span>
+          </li>
+          <li>
+            <strong>Condicion de victoria:</strong>
+            Si aciertas, ganas la partida. Si fallas, pierdes automaticamente.
+          </li>
+          <li>
+            <strong>Importante:</strong>
+            Cada jugador solo tiene un intento para adivinar el personaje del rival.
+          </li>
+        </ol>
+      </div>
+    </section>
+
     <template id="character-card-template">
-      <button class="character-card fade-in" type="button">
+      <article class="character-card fade-in" role="button" tabindex="0">
         <span class="character-avatar"></span>
         <strong class="character-name"></strong>
         <span class="tag-row"></span>
-      </button>
+      </article>
     </template>
 
     <template id="history-item-template">

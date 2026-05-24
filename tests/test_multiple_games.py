@@ -1,6 +1,8 @@
 import unittest
+from collections import Counter
 
 import app as server
+from characters import CHARACTERS
 
 
 class MultipleGamesTest(unittest.TestCase):
@@ -58,8 +60,11 @@ class MultipleGamesTest(unittest.TestCase):
         self._emit_valid_question_for_game(clients, states, first_game_id)
         updated_states = [self._latest_state_after_request(client) for client in clients]
 
-        self.assertEqual(len(updated_states[0]["history"]), 1)
-        self.assertEqual(len(updated_states[1]["history"]), 1)
+        first_game_current = 0 if states[0]["is_your_turn"] else 1
+        first_game_rival = 1 - first_game_current
+        self.assertEqual(len(updated_states[first_game_current]["history"]), 1)
+        self.assertEqual(updated_states[first_game_current]["history"][0]["actor_scope"], "self")
+        self.assertEqual(updated_states[first_game_rival]["history"], [])
         self.assertEqual(updated_states[2]["history"], [])
         self.assertEqual(updated_states[3]["history"], [])
         self.assertNotEqual(
@@ -124,6 +129,99 @@ class MultipleGamesTest(unittest.TestCase):
         with server.state_lock:
             self.assertNotIn(room["room_code"], server.private_rooms)
 
+    def test_leave_game_cleans_public_queue_and_private_room_waiting(self):
+        public_client = server.socketio.test_client(server.app)
+        self._join_public_queue(public_client)
+        public_client.emit("leave_game")
+        public_events = public_client.get_received()
+
+        self.assertTrue(any(event["name"] == "left_game" for event in public_events))
+        with server.state_lock:
+            self.assertEqual(server.waiting_players, [])
+
+        private_client = server.socketio.test_client(server.app)
+        self._create_qr_room(private_client)
+        room = self._private_room_created(private_client)
+        private_client.emit("leave_game")
+        private_events = private_client.get_received()
+
+        self.assertTrue(any(event["name"] == "left_game" for event in private_events))
+        with server.state_lock:
+            self.assertNotIn(room["room_code"], server.private_rooms)
+
+    def test_leave_active_game_gives_opponent_win_and_cleans_indexes(self):
+        clients = [server.socketio.test_client(server.app) for _ in range(2)]
+        for client in clients:
+            self._join_public_queue(client)
+
+        states = [self._latest_state(client) for client in clients]
+        leaving_index = 0
+        opponent_index = 1
+        game_id = states[leaving_index]["game_id"]
+
+        clients[leaving_index].emit("leave_game")
+        leaving_events = clients[leaving_index].get_received()
+        opponent_state = self._latest_state(clients[opponent_index])
+
+        self.assertTrue(any(event["name"] == "left_game" for event in leaving_events))
+        self.assertEqual(opponent_state["status"], "finished")
+        self.assertTrue(opponent_state["you_won"])
+        self.assertEqual(opponent_state["history"][-1]["type"], "leave")
+        self.assertEqual(opponent_state["history"][-1]["actor_scope"], "rival")
+
+        with server.state_lock:
+            self.assertNotIn(game_id, server.active_games)
+            self.assertEqual(server.player_to_game, {})
+
+    def test_correct_guess_wins_immediately(self):
+        clients = [server.socketio.test_client(server.app) for _ in range(2)]
+        for client in clients:
+            self._join_public_queue(client)
+
+        states = [self._latest_state(client) for client in clients]
+        current_index = 0 if states[0]["is_your_turn"] else 1
+        rival_index = 1 - current_index
+        correct_id = states[rival_index]["your_secret_character"]["id"]
+
+        clients[current_index].emit("guess_character", {"character_id": correct_id})
+        final_states = [self._latest_state_after_request(client) for client in clients]
+
+        self.assertEqual(final_states[current_index]["status"], "finished")
+        self.assertTrue(final_states[current_index]["you_won"])
+        self.assertFalse(final_states[rival_index]["you_won"])
+        self.assertFalse(final_states[current_index]["can_guess"])
+        self.assertEqual(final_states[current_index]["winner_player_number"], states[current_index]["player_number"])
+        self.assertTrue(final_states[current_index]["history"][-1]["answer"])
+
+    def test_wrong_guess_loses_immediately_and_blocks_more_actions(self):
+        clients = [server.socketio.test_client(server.app) for _ in range(2)]
+        for client in clients:
+            self._join_public_queue(client)
+
+        states = [self._latest_state(client) for client in clients]
+        current_index = 0 if states[0]["is_your_turn"] else 1
+        rival_index = 1 - current_index
+        wrong_id = states[current_index]["your_secret_character"]["id"]
+
+        clients[current_index].emit("guess_character", {"character_id": wrong_id})
+        final_states = [self._latest_state_after_request(client) for client in clients]
+
+        self.assertEqual(final_states[current_index]["status"], "finished")
+        self.assertFalse(final_states[current_index]["you_won"])
+        self.assertTrue(final_states[rival_index]["you_won"])
+        self.assertFalse(final_states[current_index]["can_guess"])
+        self.assertEqual(final_states[current_index]["winner_player_number"], states[rival_index]["player_number"])
+        self.assertFalse(final_states[current_index]["history"][-1]["answer"])
+        self.assertEqual(final_states[current_index]["history"][-1]["character_id"], wrong_id)
+
+        clients[current_index].emit("ask_question", {"attribute": "gafas", "value": True})
+        errors = [
+            event for event in clients[current_index].get_received()
+            if event["name"] == "error_message"
+        ]
+        self.assertTrue(errors)
+        self.assertIn("termino", errors[-1]["args"][0]["message"])
+
         disconnecting_creator = server.socketio.test_client(server.app)
         self._create_qr_room(disconnecting_creator)
         room = self._private_room_created(disconnecting_creator)
@@ -131,6 +229,57 @@ class MultipleGamesTest(unittest.TestCase):
 
         with server.state_lock:
             self.assertNotIn(room["room_code"], server.private_rooms)
+
+    def test_accessory_questions_only_allow_curated_values(self):
+        clients = [server.socketio.test_client(server.app) for _ in range(2)]
+        for client in clients:
+            self._join_public_queue(client)
+
+        states = [self._latest_state(client) for client in clients]
+        current_index = 0 if states[0]["is_your_turn"] else 1
+
+        clients[current_index].emit(
+            "ask_question",
+            {"attribute": "accesorio", "value": "broche"},
+        )
+        errors = [
+            event for event in clients[current_index].get_received()
+            if event["name"] == "error_message"
+        ]
+
+        self.assertTrue(errors)
+        self.assertIn("valor", errors[-1]["args"][0]["message"])
+
+        state_after_error = self._latest_state_after_request(clients[current_index])
+        self.assertTrue(state_after_error["is_your_turn"])
+        self.assertEqual(state_after_error["history"], [])
+
+        clients[current_index].emit(
+            "ask_question",
+            {"attribute": "accesorio", "value": "aretes"},
+        )
+        action_events = [
+            event for event in clients[current_index].get_received()
+            if event["name"] == "action_result"
+        ]
+
+        self.assertTrue(action_events)
+        self.assertEqual(action_events[-1]["args"][0]["attribute"], "accesorio")
+        self.assertEqual(action_events[-1]["args"][0]["value"], "aretes")
+
+    def test_character_accessories_match_curated_question_values(self):
+        allowed_accessories = {"aretes", "bufanda", "collar", "corbata"}
+        accessory_counts = Counter(
+            character["accesorio"] for character in CHARACTERS
+        )
+
+        self.assertEqual(set(accessory_counts), allowed_accessories)
+        self.assertEqual(accessory_counts, Counter({
+            "aretes": 4,
+            "bufanda": 4,
+            "collar": 4,
+            "corbata": 4,
+        }))
 
     def test_two_qr_games_are_isolated(self):
         creator_one = server.socketio.test_client(server.app)
@@ -169,8 +318,11 @@ class MultipleGamesTest(unittest.TestCase):
         self._emit_valid_question_for_game(clients, states, states[0]["game_id"])
         updated_states = [self._latest_state_after_request(client) for client in clients]
 
-        self.assertEqual(len(updated_states[0]["history"]), 1)
-        self.assertEqual(len(updated_states[1]["history"]), 1)
+        current_index = 0 if states[0]["is_your_turn"] else 1
+        rival_index = 1 - current_index
+        self.assertEqual(len(updated_states[current_index]["history"]), 1)
+        self.assertEqual(updated_states[current_index]["history"][0]["actor_scope"], "self")
+        self.assertEqual(updated_states[rival_index]["history"], [])
         self.assertEqual(updated_states[2]["history"], [])
         self.assertEqual(updated_states[3]["history"], [])
 
@@ -211,8 +363,11 @@ class MultipleGamesTest(unittest.TestCase):
             self._latest_state_after_request(auto_two),
         ]
 
-        self.assertEqual(len(qr_states_after[0]["history"]), 1)
-        self.assertEqual(len(qr_states_after[1]["history"]), 1)
+        qr_current_index = 0 if qr_states[0]["is_your_turn"] else 1
+        qr_rival_index = 1 - qr_current_index
+        self.assertEqual(len(qr_states_after[qr_current_index]["history"]), 1)
+        self.assertEqual(qr_states_after[qr_current_index]["history"][0]["actor_scope"], "self")
+        self.assertEqual(qr_states_after[qr_rival_index]["history"], [])
         self.assertEqual(auto_states_after[0]["history"], [])
         self.assertEqual(auto_states_after[1]["history"], [])
 

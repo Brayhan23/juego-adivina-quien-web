@@ -144,8 +144,10 @@ Cada partida se desarrolla entre dos jugadores:
    - Hacer una pregunta sobre una caracteristica.
    - Intentar adivinar el personaje del rival.
 5. Si hace una pregunta valida, el servidor responde si la caracteristica coincide o no con el personaje secreto del rival.
-6. Si intenta adivinar y acierta, la partida termina y se declara ganador.
-7. Si se equivoca, el turno pasa al rival.
+6. Cada jugador tiene una sola oportunidad para adivinar en toda la partida.
+7. Si intenta adivinar y acierta, la partida termina y se declara ganador.
+8. Si intenta adivinar y falla, pierde automaticamente y el rival gana.
+9. El sistema no declara victoria automatica por descarte; el jugador debe elegir manualmente un personaje y confirmar la adivinanza.
 
 Las preguntas se basan en atributos como:
 

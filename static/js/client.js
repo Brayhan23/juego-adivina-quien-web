@@ -13,6 +13,8 @@ const elements = {
   matchStatus: document.querySelector("#match-status"),
   turnStatus: document.querySelector("#turn-status"),
   serverMessage: document.querySelector("#server-message"),
+  rulesButton: document.querySelector("#rules-button"),
+  leaveGameButton: document.querySelector("#leave-game-button"),
   mainMenu: document.querySelector("#main-menu"),
   joinPublicButton: document.querySelector("#join-public-button"),
   choosePrivateButton: document.querySelector("#choose-private-button"),
@@ -49,6 +51,12 @@ const elements = {
   modalTitle: document.querySelector("#game-over-title"),
   modalMessage: document.querySelector("#game-over-message"),
   playAgainButton: document.querySelector("#play-again-button"),
+  guessConfirmModal: document.querySelector("#guess-confirm-modal"),
+  guessConfirmMessage: document.querySelector("#guess-confirm-message"),
+  confirmGuessButton: document.querySelector("#confirm-guess-button"),
+  cancelGuessButton: document.querySelector("#cancel-guess-button"),
+  rulesModal: document.querySelector("#rules-modal"),
+  closeRulesButton: document.querySelector("#close-rules-button"),
 };
 
 const ATTRIBUTE_LABELS = {
@@ -99,18 +107,6 @@ const QUESTION_VALUES = {
     ["bufanda", "Bufanda"],
     ["collar", "Collar"],
     ["corbata", "Corbata"],
-    ["broche", "Broche"],
-    ["audifonos", "Audifonos"],
-    ["lazo", "Lazo"],
-    ["reloj", "Reloj"],
-    ["pulsera", "Pulsera"],
-    ["panuelo", "Panuelo"],
-    ["diadema", "Diadema"],
-    ["mochila", "Mochila"],
-    ["flor", "Flor"],
-    ["chaleco", "Chaleco"],
-    ["bolso", "Bolso"],
-    ["camara", "Camara"],
   ],
 };
 
@@ -123,8 +119,15 @@ const uiState = {
   latestStatus: "waiting",
   isYourTurn: false,
   boardIds: new Set(),
+  coveredCharacterIds: new Set(),
+  currentGameId: null,
+  currentBoard: [],
+  boardSortedByCovered: false,
   invitationUrl: "",
   matchmakingPending: false,
+  canGuess: false,
+  pendingGuessCharacterId: null,
+  hasSentLeaveRequest: false,
 };
 
 function animateElement(element, animationClass) {
@@ -142,6 +145,11 @@ function showToast(message, type = "info") {
   elements.serverMessage.classList.remove("info", "success", "error", "warning", "positive", "negative");
   elements.serverMessage.classList.add(type);
   animateElement(elements.serverMessage, type === "error" ? "shake" : "glow");
+}
+
+function updateLeaveButtonState() {
+  const canLeave = ["waiting", "private_waiting", "active"].includes(uiState.latestStatus);
+  elements.leaveGameButton.disabled = !canLeave || uiState.hasSentLeaveRequest;
 }
 
 function setModeButtonsDisabled(disabled) {
@@ -163,6 +171,7 @@ function resetPrivateInviteView() {
 function showMainMenu() {
   uiState.matchmakingPending = false;
   uiState.isYourTurn = false;
+  uiState.hasSentLeaveRequest = false;
   updateMatchStatus("menu");
   setModeButtonsDisabled(false);
   elements.copyInviteButton.disabled = true;
@@ -178,6 +187,7 @@ function showMainMenu() {
 
 function showWaitingPublic() {
   uiState.matchmakingPending = true;
+  uiState.hasSentLeaveRequest = false;
   updateMatchStatus("waiting");
   elements.mainMenu.classList.add("is-hidden");
   elements.publicWaitingPanel.classList.remove("is-hidden");
@@ -190,6 +200,7 @@ function showWaitingPublic() {
 
 function showPrivateRoomPanel(joining = false) {
   uiState.matchmakingPending = true;
+  uiState.hasSentLeaveRequest = false;
   updateMatchStatus("private_waiting");
   elements.mainMenu.classList.add("is-hidden");
   elements.publicWaitingPanel.classList.add("is-hidden");
@@ -203,6 +214,7 @@ function showPrivateRoomPanel(joining = false) {
 
 function showGameScreen() {
   uiState.matchmakingPending = false;
+  uiState.hasSentLeaveRequest = false;
   elements.mainMenu.classList.add("is-hidden");
   elements.publicWaitingPanel.classList.add("is-hidden");
   elements.qrPanel.classList.add("is-hidden");
@@ -317,6 +329,17 @@ function createTag(text, extraClass = "") {
   return tag;
 }
 
+function clearSelectedCharacter() {
+  uiState.selectedCharacterId = null;
+  uiState.selectedCharacterName = "Ninguno";
+  elements.selectedCharacterId.value = "";
+  elements.selectedCharacterName.textContent = "Ninguno";
+
+  document.querySelectorAll(".character-card").forEach((card) => {
+    card.classList.remove("selected", "card-selected", "opponent-target");
+  });
+}
+
 function getQuestionValue() {
   const value = elements.questionValue.value;
 
@@ -344,15 +367,31 @@ function updateQuestionValues() {
   });
 }
 
+function getVisualBoard(board = uiState.currentBoard) {
+  const visualBoard = [...board];
+
+  if (!uiState.boardSortedByCovered) {
+    return visualBoard;
+  }
+
+  return visualBoard.sort((left, right) => {
+    const leftCovered = uiState.coveredCharacterIds.has(Number(left.id));
+    const rightCovered = uiState.coveredCharacterIds.has(Number(right.id));
+
+    if (leftCovered === rightCovered) {
+      return 0;
+    }
+
+    return leftCovered ? 1 : -1;
+  });
+}
+
 function renderBoard(board = []) {
   elements.board.replaceChildren();
   uiState.boardIds = new Set(board.map((character) => Number(character.id)));
 
   if (uiState.selectedCharacterId && !uiState.boardIds.has(Number(uiState.selectedCharacterId))) {
-    uiState.selectedCharacterId = null;
-    uiState.selectedCharacterName = "Ninguno";
-    elements.selectedCharacterId.value = "";
-    elements.selectedCharacterName.textContent = "Ninguno";
+    clearSelectedCharacter();
   }
 
   if (!board.length) {
@@ -365,7 +404,7 @@ function renderBoard(board = []) {
     return;
   }
 
-  board.forEach((character) => {
+  getVisualBoard(board).forEach((character) => {
     const fragment = elements.characterTemplate.content.cloneNode(true);
     const card = fragment.querySelector(".character-card");
     const avatar = fragment.querySelector(".character-avatar");
@@ -374,6 +413,8 @@ function renderBoard(board = []) {
 
     card.dataset.characterId = character.id;
     card.dataset.characterName = character.nombre;
+    card.title = "Clic para tapar/destapar";
+    card.setAttribute("aria-label", `${character.nombre}. Clic para tapar o destapar.`);
     avatar.textContent = character.avatar;
     name.textContent = character.nombre;
 
@@ -384,13 +425,73 @@ function renderBoard(board = []) {
       createTag(character.sombrero ? "sombrero" : "sin sombrero")
     );
 
-    if (Number(uiState.selectedCharacterId) === Number(character.id)) {
+    const isCovered = uiState.coveredCharacterIds.has(Number(character.id));
+
+    if (isCovered) {
+      card.classList.add("covered", "card-covered");
+      card.setAttribute("aria-pressed", "true");
+    } else {
+      card.setAttribute("aria-pressed", "false");
+    }
+
+    if (!isCovered && Number(uiState.selectedCharacterId) === Number(character.id)) {
       card.classList.add("selected", "card-selected", "opponent-target");
     }
 
-    card.addEventListener("click", () => handleCharacterSelection(character, card));
+    const badge = document.createElement("span");
+    badge.className = "discarded-badge";
+    badge.textContent = "Descartado";
+
+    const hint = document.createElement("span");
+    hint.className = "cover-hint";
+    hint.textContent = isCovered ? "Clic para destapar" : "Clic para tapar";
+
+    const actions = document.createElement("span");
+    actions.className = "card-actions";
+
+    const selectButton = document.createElement("button");
+    selectButton.className = "guess-select-button";
+    selectButton.type = "button";
+    selectButton.textContent = "Elegir";
+    selectButton.disabled = isCovered;
+    selectButton.title = isCovered
+      ? "Destapa este personaje antes de seleccionarlo"
+      : "Seleccionar para adivinar";
+    selectButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      handleCharacterSelection(character, card);
+    });
+
+    actions.appendChild(selectButton);
+    card.append(badge, hint, actions);
+
+    card.addEventListener("click", () => toggleCharacterCovered(character, card));
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleCharacterCovered(character, card);
+      }
+    });
     elements.board.appendChild(fragment);
   });
+}
+
+function sortBoardByCovered() {
+  if (!uiState.currentBoard.length) {
+    showToast("Todavia no hay tablero para ordenar.", "error");
+    return;
+  }
+
+  if (!uiState.coveredCharacterIds.size) {
+    showToast("No hay personajes descartados para ordenar.", "info");
+    animateElement(elements.board, "glow");
+    return;
+  }
+
+  uiState.boardSortedByCovered = true;
+  renderBoard(uiState.currentBoard);
+  animateElement(elements.board, "board-reorder");
+  showToast("Tablero ordenado: los descartados quedaron al final.", "success");
 }
 
 function renderSecretCharacter(character) {
@@ -456,36 +557,64 @@ function createHistoryItem(title, text, type = "info") {
 }
 
 function historyItemFromAction(action) {
+  const actorLabel = action.actor_label || "Sistema";
+
   if (action.type === "question") {
     const label = ATTRIBUTE_LABELS[action.attribute] || action.attribute;
     const answer = action.answer ? "SI" : "NO";
     const type = action.answer ? "positive" : "negative";
-    return createHistoryItem(
-      "Pregunta",
+    const item = createHistoryItem(
+      `${actorLabel}: pregunta`,
       `${label}: ${formatTraitValue(action.value)}. Respuesta: ${answer}.`,
       type
     );
+    item.classList.add(action.actor_scope || "self");
+    return item;
   }
 
   if (action.type === "guess") {
-    return createHistoryItem(
+    const characterName = action.character_name || `personaje ${action.character_id}`;
+    const resultText = action.answer
+      ? `${actorLabel} intento adivinar a ${characterName} y acerto. Gana la partida.`
+      : `${actorLabel} intento adivinar a ${characterName} y fallo. Pierde la partida.`;
+
+    const item = createHistoryItem(
       "Adivinanza",
-      action.answer ? "Adivinanza correcta." : "Adivinanza incorrecta.",
+      resultText,
       action.answer ? "victory" : "defeat"
     );
+    item.classList.add(action.actor_scope || "system");
+    return item;
+  }
+
+  if (action.type === "leave") {
+    const message = action.actor_scope === "self"
+      ? "Abandonaste la partida. El rival gana por abandono."
+      : "El rival abandono la partida. Ganaste por abandono.";
+    const item = createHistoryItem("Abandono", message, action.actor_scope === "self" ? "defeat" : "victory");
+    item.classList.add(action.actor_scope || "system");
+    return item;
   }
 
   if (action.type === "disconnect") {
-    return createHistoryItem("Desconexion", action.message, "warning");
+    const message = action.actor_scope === "rival"
+      ? "El rival abandono la partida. Ganaste por abandono."
+      : action.message;
+    const item = createHistoryItem("Sistema", message, "warning");
+    item.classList.add("system");
+    return item;
   }
 
-  return createHistoryItem("Sistema", "Accion registrada por el servidor.", "info");
+  const item = createHistoryItem("Sistema", "Accion registrada por el servidor.", "info");
+  item.classList.add("system");
+  return item;
 }
 
 function updateTurnIndicator(state) {
   const isYourTurn = Boolean(state.is_your_turn);
   const finished = state.status === "finished";
   uiState.isYourTurn = isYourTurn && !finished;
+  uiState.canGuess = Boolean(state.can_guess) && !finished;
 
   elements.turnStatus.textContent = finished
     ? "Partida terminada"
@@ -504,7 +633,7 @@ function updateTurnIndicator(state) {
   }
 
   elements.askButton.disabled = !isYourTurn || finished;
-  elements.guessButton.disabled = !isYourTurn || finished;
+  elements.guessButton.disabled = !isYourTurn || finished || !uiState.canGuess;
 }
 
 function updateMatchStatus(status) {
@@ -521,10 +650,19 @@ function updateMatchStatus(status) {
   elements.matchStatus.textContent = labels[status] || "Esperando rival";
   elements.matchStatus.classList.toggle("turn-active", status === "active");
   elements.matchStatus.classList.toggle("turn-waiting", status !== "active");
+  updateLeaveButtonState();
 }
 
 function updateFromState(state) {
   const statusChanged = uiState.latestStatus !== state.status;
+
+  if (uiState.currentGameId !== state.game_id) {
+    uiState.currentGameId = state.game_id;
+    uiState.coveredCharacterIds.clear();
+    uiState.boardSortedByCovered = false;
+    clearSelectedCharacter();
+  }
+  uiState.currentBoard = state.board || [];
 
   showGameScreen();
   applyPlayerTheme(state.player_number);
@@ -539,24 +677,136 @@ function updateFromState(state) {
   }
 
   if (state.status === "finished") {
-    showEndGameModal(state.you_won);
+    showEndGameModal(state);
   }
 }
 
-function showEndGameModal(playerWon) {
+function getEndGameMessage(state) {
+  const latestGuess = [...(state.history || [])].reverse().find((action) => action.type === "guess");
+  const latestLeave = [...(state.history || [])].reverse().find((action) => (
+    action.type === "leave" || action.type === "disconnect"
+  ));
+
+  if (latestLeave) {
+    if (state.you_won && latestLeave.actor_scope === "rival") {
+      return "El rival abandono la partida. Ganaste por abandono.";
+    }
+
+    if (!state.you_won && latestLeave.actor_scope === "self") {
+      return "Abandonaste la partida.";
+    }
+
+    return state.you_won ? "Ganaste por abandono." : "La partida termino por abandono.";
+  }
+
+  if (!latestGuess) {
+    return state.you_won
+      ? "Ganaste la partida."
+      : "La partida termino.";
+  }
+
+  const ownGuess = latestGuess.player_number === state.player_number;
+
+  if (state.you_won && ownGuess && latestGuess.answer) {
+    return "Adivinaste el personaje secreto del rival.";
+  }
+
+  if (state.you_won && !ownGuess && !latestGuess.answer) {
+    return "El rival fallo su unica oportunidad para adivinar.";
+  }
+
+  if (!state.you_won && ownGuess && !latestGuess.answer) {
+    return "Fallaste tu unica oportunidad para adivinar.";
+  }
+
+  return "El rival adivino tu personaje secreto.";
+}
+
+function showEndGameModal(state) {
+  const playerWon = Boolean(state.you_won);
+
   elements.modal.setAttribute("aria-hidden", "false");
   elements.modal.classList.add("visible");
   elements.modal.classList.toggle("victory", playerWon);
   elements.modal.classList.toggle("defeat", !playerWon);
   elements.modalKicker.textContent = playerWon ? "Victoria" : "Derrota";
   elements.modalTitle.textContent = playerWon ? "Ganaste la partida" : "Perdiste la partida";
-  elements.modalMessage.textContent = playerWon
-    ? "Adivinaste el personaje secreto del rival."
-    : "El rival resolvio el misterio primero.";
+  elements.modalMessage.textContent = getEndGameMessage(state);
   animateElement(elements.modal.querySelector(".game-over-card"), playerWon ? "bounce" : "shake");
 }
 
+function hideEndGameModal() {
+  elements.modal.setAttribute("aria-hidden", "true");
+  elements.modal.classList.remove("visible", "victory", "defeat");
+}
+
+function showRulesModal() {
+  elements.rulesModal.setAttribute("aria-hidden", "false");
+  elements.rulesModal.classList.add("visible");
+  animateElement(elements.rulesModal.querySelector(".rules-card"), "slide-up");
+}
+
+function hideRulesModal() {
+  elements.rulesModal.setAttribute("aria-hidden", "true");
+  elements.rulesModal.classList.remove("visible");
+}
+
+function showGuessConfirmModal() {
+  const characterName = uiState.selectedCharacterName || "el personaje seleccionado";
+
+  uiState.pendingGuessCharacterId = uiState.selectedCharacterId;
+  elements.guessConfirmMessage.textContent =
+    `Vas a intentar adivinar a ${characterName}. Recuerda que solo tienes 1 oportunidad para adivinar. Si fallas, pierdes automaticamente. Estas seguro de continuar?`;
+  elements.guessConfirmModal.setAttribute("aria-hidden", "false");
+  elements.guessConfirmModal.classList.add("visible");
+  animateElement(elements.guessConfirmModal.querySelector(".guess-confirm-card"), "bounce");
+}
+
+function hideGuessConfirmModal() {
+  uiState.pendingGuessCharacterId = null;
+  elements.guessConfirmModal.setAttribute("aria-hidden", "true");
+  elements.guessConfirmModal.classList.remove("visible");
+}
+
+function confirmGuess() {
+  if (!uiState.pendingGuessCharacterId) {
+    hideGuessConfirmModal();
+    return;
+  }
+
+  socket.emit("guess_character", {
+    character_id: uiState.pendingGuessCharacterId,
+  });
+  elements.confirmGuessButton.disabled = true;
+  hideGuessConfirmModal();
+}
+
+function leaveCurrentGame() {
+  if (!["waiting", "private_waiting", "active"].includes(uiState.latestStatus)) {
+    showToast("No hay una partida o espera activa para abandonar.", "info");
+    return;
+  }
+
+  const message = uiState.latestStatus === "active"
+    ? "Si abandonas ahora, perderas la partida y el rival ganara por abandono. Deseas continuar?"
+    : "Deseas salir de la espera y volver al menu principal?";
+
+  if (!window.confirm(message)) {
+    return;
+  }
+
+  uiState.hasSentLeaveRequest = true;
+  updateLeaveButtonState();
+  socket.emit("leave_game");
+  showToast("Procesando abandono en el servidor...", "warning");
+}
+
 function handleCharacterSelection(character, selectedCard) {
+  if (uiState.coveredCharacterIds.has(Number(character.id))) {
+    showToast("Destapa este personaje antes de seleccionarlo para adivinar.", "error");
+    return;
+  }
+
   uiState.selectedCharacterId = character.id;
   uiState.selectedCharacterName = character.nombre;
   elements.selectedCharacterId.value = character.id;
@@ -568,6 +818,37 @@ function handleCharacterSelection(character, selectedCard) {
 
   selectedCard.classList.add("selected", "card-selected", "opponent-target");
   animateElement(selectedCard, "bounce");
+}
+
+function toggleCharacterCovered(character, card) {
+  const characterId = Number(character.id);
+  const isCovered = uiState.coveredCharacterIds.has(characterId);
+
+  if (isCovered) {
+    uiState.coveredCharacterIds.delete(characterId);
+    card.classList.remove("covered", "card-covered", "flip-down");
+    card.setAttribute("aria-pressed", "false");
+    card.querySelector(".cover-hint").textContent = "Clic para tapar";
+    const selectButton = card.querySelector(".guess-select-button");
+    selectButton.disabled = false;
+    selectButton.title = "Seleccionar para adivinar";
+    animateElement(card, "bounce");
+    return;
+  }
+
+  uiState.coveredCharacterIds.add(characterId);
+  card.classList.add("covered", "card-covered");
+  card.setAttribute("aria-pressed", "true");
+  card.querySelector(".cover-hint").textContent = "Clic para destapar";
+  const selectButton = card.querySelector(".guess-select-button");
+  selectButton.disabled = true;
+  selectButton.title = "Destapa este personaje antes de seleccionarlo";
+
+  if (Number(uiState.selectedCharacterId) === characterId) {
+    clearSelectedCharacter();
+  }
+
+  animateElement(card, "flip-down");
 }
 
 function markLatestAction(action) {
@@ -592,6 +873,16 @@ function markLatestAction(action) {
     showToast(
       action.answer ? "Adivinanza correcta." : "Adivinanza incorrecta.",
       action.answer ? "positive" : "negative"
+    );
+    return;
+  }
+
+  if (action.type === "leave") {
+    showToast(
+      action.actor_scope === "self"
+        ? "Abandonaste la partida."
+        : "El rival abandono la partida. Ganaste por abandono.",
+      action.actor_scope === "self" ? "warning" : "positive"
     );
   }
 }
@@ -643,19 +934,21 @@ elements.guessForm.addEventListener("submit", (event) => {
     return;
   }
 
+  if (!uiState.canGuess) {
+    showToast("Ya usaste tu unica oportunidad para adivinar.", "error");
+    return;
+  }
+
   if (!uiState.boardIds.has(Number(uiState.selectedCharacterId))) {
     showToast("El personaje seleccionado no pertenece al tablero actual.", "error");
     return;
   }
 
-  socket.emit("guess_character", {
-    character_id: uiState.selectedCharacterId,
-  });
+  showGuessConfirmModal();
 });
 
 elements.requestStateButton.addEventListener("click", () => {
-  socket.emit("request_state");
-  showToast("Solicitando estado actualizado al servidor.", "info");
+  sortBoardByCovered();
 });
 
 elements.joinPublicButton.addEventListener("click", joinPublicGame);
@@ -668,6 +961,17 @@ elements.createQrRoomButton.addEventListener("click", () => {
 elements.copyInviteButton.addEventListener("click", copyInvitationLink);
 elements.cancelPublicButton.addEventListener("click", cancelMatchmaking);
 elements.cancelPrivateButton.addEventListener("click", cancelMatchmaking);
+elements.confirmGuessButton.addEventListener("click", confirmGuess);
+elements.cancelGuessButton.addEventListener("click", hideGuessConfirmModal);
+elements.rulesButton.addEventListener("click", showRulesModal);
+elements.closeRulesButton.addEventListener("click", hideRulesModal);
+elements.leaveGameButton.addEventListener("click", leaveCurrentGame);
+
+elements.rulesModal.addEventListener("click", (event) => {
+  if (event.target === elements.rulesModal) {
+    hideRulesModal();
+  }
+});
 
 elements.playAgainButton.addEventListener("click", () => {
   window.location.reload();
@@ -734,6 +1038,7 @@ socket.on("game_started", (data) => {
 });
 
 socket.on("state_update", (state) => {
+  elements.confirmGuessButton.disabled = false;
   updateFromState(state);
 });
 
@@ -742,6 +1047,9 @@ socket.on("action_result", (action) => {
 });
 
 socket.on("error_message", (data) => {
+  elements.confirmGuessButton.disabled = false;
+  uiState.hasSentLeaveRequest = false;
+  updateLeaveButtonState();
   showToast(data.message || "Accion invalida.", "error");
   if (uiState.latestStatus !== "active") {
     showMainMenu();
@@ -757,7 +1065,15 @@ socket.on("matchmaking_cancelled", (data) => {
   showToast(data.message || "Volviste al menu principal.", "info");
 });
 
+socket.on("left_game", (data) => {
+  hideEndGameModal();
+  hideGuessConfirmModal();
+  showMainMenu();
+  showToast(data.message || "Volviste al menu principal.", "warning");
+});
+
 updateQuestionValues();
 showMainMenu();
 elements.askButton.disabled = true;
 elements.guessButton.disabled = true;
+updateLeaveButtonState();

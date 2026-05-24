@@ -65,7 +65,7 @@ CHARACTERS = [
         "bigote": False,
         "cabello_largo": False,
         "color_cabello": "gris",
-        "accesorio": "broche",
+        "accesorio": "aretes",
     },
     {
         "id": 6,
@@ -78,7 +78,7 @@ CHARACTERS = [
         "bigote": False,
         "cabello_largo": True,
         "color_cabello": "negro",
-        "accesorio": "audifonos",
+        "accesorio": "bufanda",
     },
     {
         "id": 7,
@@ -91,7 +91,7 @@ CHARACTERS = [
         "bigote": False,
         "cabello_largo": True,
         "color_cabello": "castano",
-        "accesorio": "lazo",
+        "accesorio": "collar",
     },
     {
         "id": 8,
@@ -104,7 +104,7 @@ CHARACTERS = [
         "bigote": False,
         "cabello_largo": False,
         "color_cabello": "rubio",
-        "accesorio": "reloj",
+        "accesorio": "corbata",
     },
     {
         "id": 9,
@@ -117,7 +117,7 @@ CHARACTERS = [
         "bigote": False,
         "cabello_largo": False,
         "color_cabello": "rojo",
-        "accesorio": "pulsera",
+        "accesorio": "aretes",
     },
     {
         "id": 10,
@@ -130,7 +130,7 @@ CHARACTERS = [
         "bigote": True,
         "cabello_largo": False,
         "color_cabello": "gris",
-        "accesorio": "panuelo",
+        "accesorio": "bufanda",
     },
     {
         "id": 11,
@@ -143,7 +143,7 @@ CHARACTERS = [
         "bigote": False,
         "cabello_largo": True,
         "color_cabello": "castano",
-        "accesorio": "diadema",
+        "accesorio": "collar",
     },
     {
         "id": 12,
@@ -156,7 +156,7 @@ CHARACTERS = [
         "bigote": True,
         "cabello_largo": True,
         "color_cabello": "negro",
-        "accesorio": "mochila",
+        "accesorio": "corbata",
     },
     {
         "id": 13,
@@ -169,7 +169,7 @@ CHARACTERS = [
         "bigote": False,
         "cabello_largo": False,
         "color_cabello": "rubio",
-        "accesorio": "flor",
+        "accesorio": "aretes",
     },
     {
         "id": 14,
@@ -182,7 +182,7 @@ CHARACTERS = [
         "bigote": False,
         "cabello_largo": False,
         "color_cabello": "castano",
-        "accesorio": "chaleco",
+        "accesorio": "bufanda",
     },
     {
         "id": 15,
@@ -195,7 +195,7 @@ CHARACTERS = [
         "bigote": False,
         "cabello_largo": True,
         "color_cabello": "gris",
-        "accesorio": "bolso",
+        "accesorio": "collar",
     },
     {
         "id": 16,
@@ -208,7 +208,7 @@ CHARACTERS = [
         "bigote": True,
         "cabello_largo": False,
         "color_cabello": "rojo",
-        "accesorio": "camara",
+        "accesorio": "corbata",
     },
 ]
 
