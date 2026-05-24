@@ -149,11 +149,11 @@ select:focus-visible {
 }
 
 .audio-toggle.is-on {
-  color: var(--color-white);
-  background: linear-gradient(135deg, var(--color-blue), var(--color-dark-blue));
+  color: var(--color-dark-blue);
+  background: linear-gradient(135deg, var(--color-yellow), #fff2a4);
   box-shadow:
-    0 0 18px rgba(0, 118, 201, 0.34),
-    inset 0 -4px 0 rgba(0, 0, 0, 0.18);
+    0 0 18px rgba(255, 210, 46, 0.42),
+    inset 0 -4px 0 rgba(247, 148, 29, 0.24);
 }
 
 .audio-toggle.is-off {
@@ -349,6 +349,61 @@ h3 {
 .server-message.warning {
   border-color: rgba(247, 148, 29, 0.7);
   background: linear-gradient(135deg, #fff2c3, var(--color-yellow));
+}
+
+.answer-popup {
+  position: fixed;
+  top: clamp(18px, 8vh, 72px);
+  left: 50%;
+  z-index: 30;
+  width: min(520px, calc(100% - 28px));
+  padding: 20px 24px;
+  border: 4px solid rgba(255, 255, 255, 0.82);
+  border-radius: var(--radius-lg);
+  color: var(--color-dark-blue);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(255, 210, 46, 0.9)),
+    radial-gradient(circle at top right, rgba(0, 118, 201, 0.22), transparent 48%);
+  box-shadow:
+    0 22px 52px rgba(18, 60, 124, 0.3),
+    0 0 32px rgba(255, 210, 46, 0.45);
+  font-size: clamp(1.25rem, 4vw, 2.2rem);
+  font-weight: 900;
+  line-height: 1.12;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -18px) scale(0.92);
+}
+
+.answer-popup.show {
+  animation: answer-popup-in 260ms cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
+}
+
+.answer-popup.hide {
+  animation: answer-popup-out 260ms ease both;
+}
+
+.answer-popup.success {
+  border-color: rgba(255, 210, 46, 0.96);
+  color: #0f5132;
+  background:
+    linear-gradient(135deg, #d8ff8f, #5fd36c),
+    radial-gradient(circle at top right, rgba(255, 210, 46, 0.32), transparent 52%);
+  box-shadow:
+    0 22px 52px rgba(35, 142, 71, 0.28),
+    0 0 32px rgba(255, 210, 46, 0.42);
+}
+
+.answer-popup.error {
+  border-color: rgba(255, 210, 46, 0.74);
+  color: var(--color-white);
+  background:
+    linear-gradient(135deg, var(--color-red), var(--color-orange)),
+    radial-gradient(circle at top right, rgba(255, 210, 46, 0.34), transparent 52%);
+  box-shadow:
+    0 22px 52px rgba(228, 37, 42, 0.3),
+    0 0 32px rgba(247, 148, 29, 0.45);
 }
 
 /* ==============================
@@ -554,6 +609,10 @@ h3 {
   display: grid;
   gap: 8px;
   min-width: 0;
+}
+
+.qr-details .status-label {
+  color: var(--color-black);
 }
 
 .room-code {
@@ -1350,6 +1409,30 @@ button.disabled,
 
   to {
     opacity: 1;
+  }
+}
+
+@keyframes answer-popup-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px) scale(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes answer-popup-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(-50%, -14px) scale(0.94);
   }
 }
 

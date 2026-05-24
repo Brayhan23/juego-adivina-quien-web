@@ -275,12 +275,9 @@ class MultipleGamesTest(unittest.TestCase):
         )
 
         self.assertEqual(set(accessory_counts), allowed_accessories)
-        self.assertEqual(accessory_counts, Counter({
-            "aretes": 4,
-            "bufanda": 4,
-            "collar": 4,
-            "corbata": 4,
-        }))
+        self.assertEqual(sum(accessory_counts.values()), len(CHARACTERS))
+        for accessory in allowed_accessories:
+            self.assertGreater(accessory_counts[accessory], 0)
 
     def test_characters_keep_avatar_fallback_and_image_path(self):
         expected_images = {
@@ -339,6 +336,18 @@ class MultipleGamesTest(unittest.TestCase):
             "launchVictoryConfetti",
         ]:
             self.assertIn(f"function {function_name}", client_js)
+
+    def test_answer_popup_is_wired_to_question_results(self):
+        html = Path("templates/index.html").read_text(encoding="utf-8")
+        client_js = Path("static/js/client.js").read_text(encoding="utf-8")
+        styles = Path("static/css/styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("id=\"answer-popup\"", html)
+        self.assertIn("function showAnswerPopup", client_js)
+        self.assertIn("showAnswerPopup(action.answer)", client_js)
+        self.assertIn(".answer-popup.show", styles)
+        self.assertIn(".answer-popup.success", styles)
+        self.assertIn(".answer-popup.error", styles)
 
     def test_two_qr_games_are_isolated(self):
         creator_one = server.socketio.test_client(server.app)

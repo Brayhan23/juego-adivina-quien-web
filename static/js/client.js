@@ -48,6 +48,7 @@ const elements = {
   historyList: document.querySelector("#history-list"),
   characterTemplate: document.querySelector("#character-card-template"),
   historyTemplate: document.querySelector("#history-item-template"),
+  answerPopup: document.querySelector("#answer-popup"),
   modal: document.querySelector("#game-over-modal"),
   modalKicker: document.querySelector("#game-over-kicker"),
   modalTitle: document.querySelector("#game-over-title"),
@@ -153,12 +154,15 @@ const uiState = {
   coveredCharacterIds: new Set(),
   currentGameId: null,
   currentBoard: [],
+  boardSignature: "",
+  secretCharacterId: null,
   boardSortedByCovered: false,
   invitationUrl: "",
   matchmakingPending: false,
   canGuess: false,
   pendingGuessCharacterId: null,
   hasSentLeaveRequest: false,
+  answerPopupTimeout: null,
   audioUnlocked: false,
   musicEnabled: getStoredBoolean(AUDIO_STORAGE_KEYS.music, true),
   effectsEnabled: getStoredBoolean(AUDIO_STORAGE_KEYS.effects, true),
@@ -187,7 +191,7 @@ function createAudioTrack(src, loop = false, volume = 0.5) {
   const track = new Audio(src);
   track.loop = loop;
   track.volume = volume;
-  track.preload = "auto";
+  track.preload = "none";
   track.addEventListener("error", () => {
     // Missing audio files should never interrupt the game flow.
   });
@@ -209,6 +213,44 @@ function showToast(message, type = "info") {
   elements.serverMessage.classList.remove("info", "success", "error", "warning", "positive", "negative");
   elements.serverMessage.classList.add(type);
   animateElement(elements.serverMessage, type === "error" ? "shake" : "glow");
+}
+
+function normalizeAnswer(answer) {
+  if (answer === true) {
+    return "SI";
+  }
+
+  if (answer === false) {
+    return "NO";
+  }
+
+  const normalized = String(answer || "").trim().toUpperCase();
+  if (normalized === "SÍ" || normalized === "SI" || normalized === "TRUE") {
+    return "SI";
+  }
+
+  return "NO";
+}
+
+function showAnswerPopup(answer) {
+  const normalizedAnswer = normalizeAnswer(answer);
+  const isPositive = normalizedAnswer === "SI";
+
+  if (uiState.answerPopupTimeout) {
+    window.clearTimeout(uiState.answerPopupTimeout);
+  }
+
+  elements.answerPopup.textContent = `Respuesta de la pregunta : ${isPositive ? "S\u00cd" : "NO"}`;
+  elements.answerPopup.setAttribute("aria-hidden", "false");
+  elements.answerPopup.classList.remove("show", "hide", "success", "error");
+  void elements.answerPopup.offsetWidth;
+  elements.answerPopup.classList.add("show", isPositive ? "success" : "error");
+
+  uiState.answerPopupTimeout = window.setTimeout(() => {
+    elements.answerPopup.classList.remove("show");
+    elements.answerPopup.classList.add("hide");
+    elements.answerPopup.setAttribute("aria-hidden", "true");
+  }, 2500);
 }
 
 function enableAudio() {
@@ -625,8 +667,9 @@ function renderCharacterPortrait(container, character, extraImageClass = "") {
   image.className = `character-image ${extraImageClass}`.trim();
   image.src = character.imagen;
   image.alt = `Retrato de ${character.nombre}`;
-  image.loading = "lazy";
+  image.loading = extraImageClass ? "eager" : "lazy";
   image.decoding = "async";
+  image.fetchPriority = extraImageClass ? "high" : "low";
   image.addEventListener("load", () => {
     container.classList.add("image-loaded");
   });
@@ -694,6 +737,12 @@ function getVisualBoard(board = uiState.currentBoard) {
 
     return leftCovered ? 1 : -1;
   });
+}
+
+function getBoardSignature(board = []) {
+  return board
+    .map((character) => `${character.id}:${character.imagen || ""}:${character.avatar || ""}`)
+    .join("|");
 }
 
 function renderBoard(board = []) {
@@ -958,22 +1007,38 @@ function updateMatchStatus(status) {
 
 function updateFromState(state) {
   const statusChanged = uiState.latestStatus !== state.status;
+  const board = state.board || [];
+  const boardSignature = getBoardSignature(board);
+  const secretCharacter = state.your_secret_character;
+  const isNewGame = uiState.currentGameId !== state.game_id;
 
-  if (uiState.currentGameId !== state.game_id) {
+  if (isNewGame) {
     uiState.currentGameId = state.game_id;
     uiState.coveredCharacterIds.clear();
     uiState.boardSortedByCovered = false;
+    uiState.boardSignature = "";
+    uiState.secretCharacterId = null;
+    uiState.lastHistoryLength = 0;
     uiState.endGameAudioPlayedFor = null;
     clearSelectedCharacter();
   }
-  uiState.currentBoard = state.board || [];
+  uiState.currentBoard = board;
 
   showGameScreen();
   applyPlayerTheme(state.player_number);
   updateMatchStatus(state.status);
   updateTurnIndicator(state);
-  renderSecretCharacter(state.your_secret_character);
-  renderBoard(state.board);
+
+  if (secretCharacter && uiState.secretCharacterId !== secretCharacter.id) {
+    uiState.secretCharacterId = secretCharacter.id;
+    renderSecretCharacter(secretCharacter);
+  }
+
+  if (isNewGame || uiState.boardSignature !== boardSignature) {
+    uiState.boardSignature = boardSignature;
+    renderBoard(board);
+  }
+
   renderHistory(state.history);
 
   if (state.status === "active" && statusChanged) {
@@ -1176,6 +1241,7 @@ function toggleCharacterCovered(character, card) {
 function markLatestAction(action) {
   if (action.type === "question") {
     playSound(action.answer ? "correct" : "wrong");
+    showAnswerPopup(action.answer);
     showToast(
       action.answer ? "Respuesta del servidor: SI." : "Respuesta del servidor: NO.",
       action.answer ? "positive" : "negative"
