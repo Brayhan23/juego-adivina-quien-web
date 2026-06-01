@@ -49,6 +49,7 @@ const elements = {
   characterTemplate: document.querySelector("#character-card-template"),
   historyTemplate: document.querySelector("#history-item-template"),
   answerPopup: document.querySelector("#answer-popup"),
+  turnPopup: document.querySelector("#turn-popup"),
   modal: document.querySelector("#game-over-modal"),
   modalKicker: document.querySelector("#game-over-kicker"),
   modalTitle: document.querySelector("#game-over-title"),
@@ -147,6 +148,7 @@ const uiState = {
   selectedCharacterName: "Ninguno",
   playerNumber: null,
   lastTurnOwner: null,
+  previousTurnState: false,
   lastHistoryLength: 0,
   latestStatus: "waiting",
   isYourTurn: false,
@@ -163,6 +165,7 @@ const uiState = {
   pendingGuessCharacterId: null,
   hasSentLeaveRequest: false,
   answerPopupTimeout: null,
+  turnPopupTimeout: null,
   audioUnlocked: false,
   musicEnabled: getStoredBoolean(AUDIO_STORAGE_KEYS.music, true),
   effectsEnabled: getStoredBoolean(AUDIO_STORAGE_KEYS.effects, true),
@@ -250,6 +253,25 @@ function showAnswerPopup(answer) {
     elements.answerPopup.classList.remove("show");
     elements.answerPopup.classList.add("hide");
     elements.answerPopup.setAttribute("aria-hidden", "true");
+  }, 2500);
+}
+
+function showTurnPopup() {
+  if (uiState.turnPopupTimeout) {
+    window.clearTimeout(uiState.turnPopupTimeout);
+  }
+
+  elements.turnPopup.classList.remove("show", "hide", "player-one", "player-two");
+  elements.turnPopup.classList.add(uiState.playerNumber === 2 ? "player-two" : "player-one");
+  elements.turnPopup.setAttribute("aria-hidden", "false");
+  void elements.turnPopup.offsetWidth;
+  elements.turnPopup.classList.add("show");
+  playSound("click");
+
+  uiState.turnPopupTimeout = window.setTimeout(() => {
+    elements.turnPopup.classList.remove("show");
+    elements.turnPopup.classList.add("hide");
+    elements.turnPopup.setAttribute("aria-hidden", "true");
   }, 2500);
 }
 
@@ -964,6 +986,7 @@ function historyItemFromAction(action) {
 function updateTurnIndicator(state) {
   const isYourTurn = Boolean(state.is_your_turn);
   const finished = state.status === "finished";
+  const becameYourTurn = isYourTurn && !uiState.previousTurnState && !finished;
   uiState.isYourTurn = isYourTurn && !finished;
   uiState.canGuess = Boolean(state.can_guess) && !finished;
 
@@ -983,6 +1006,11 @@ function updateTurnIndicator(state) {
     uiState.lastTurnOwner = state.current_turn_player_number;
   }
 
+  if (becameYourTurn) {
+    showTurnPopup();
+  }
+
+  uiState.previousTurnState = isYourTurn && !finished;
   elements.askButton.disabled = !isYourTurn || finished;
   elements.guessButton.disabled = !isYourTurn || finished || !uiState.canGuess;
 }
@@ -1018,6 +1046,7 @@ function updateFromState(state) {
     uiState.boardSortedByCovered = false;
     uiState.boardSignature = "";
     uiState.secretCharacterId = null;
+    uiState.previousTurnState = false;
     uiState.lastHistoryLength = 0;
     uiState.endGameAudioPlayedFor = null;
     clearSelectedCharacter();

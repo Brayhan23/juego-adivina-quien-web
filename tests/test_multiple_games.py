@@ -349,6 +349,19 @@ class MultipleGamesTest(unittest.TestCase):
         self.assertIn(".answer-popup.success", styles)
         self.assertIn(".answer-popup.error", styles)
 
+    def test_turn_popup_is_wired_to_real_turn_changes(self):
+        html = Path("templates/index.html").read_text(encoding="utf-8")
+        client_js = Path("static/js/client.js").read_text(encoding="utf-8")
+        styles = Path("static/css/styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("id=\"turn-popup\"", html)
+        self.assertIn("function showTurnPopup", client_js)
+        self.assertIn("const becameYourTurn = isYourTurn && !uiState.previousTurnState", client_js)
+        self.assertIn("showTurnPopup();", client_js)
+        self.assertIn(".turn-popup.show", styles)
+        self.assertIn(".turn-popup.player-one", styles)
+        self.assertIn(".turn-popup.player-two", styles)
+
     def test_two_qr_games_are_isolated(self):
         creator_one = server.socketio.test_client(server.app)
         self._create_qr_room(creator_one)
