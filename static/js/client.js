@@ -562,12 +562,25 @@ function joinPublicGame() {
   showToast("Buscando rival para partida publica...", "info");
 }
 
+function isLocalOnlyHost() {
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
+
 function createPrivateGame() {
   enableAudio();
   playSound("click");
 
   if (uiState.latestStatus === "active") {
     showToast("No puedes crear una sala QR porque ya estas en una partida.", "error");
+    playSound("wrong");
+    return;
+  }
+
+  if (isLocalOnlyHost()) {
+    showToast(
+      "Para compartir el QR, abre el juego usando la IP WiFi del computador en lugar de localhost.",
+      "error",
+    );
     playSound("wrong");
     return;
   }
@@ -1467,7 +1480,8 @@ socket.on("private_room_detected", (data) => {
 
 socket.on("private_room_created", (data) => {
   showPrivateRoomPanel(false);
-  showQrInvite(data.room_code, data.invitation_url);
+  const invitationUrl = `${window.location.origin}/?room=${encodeURIComponent(data.room_code)}`;
+  showQrInvite(data.room_code, invitationUrl);
   elements.createQrRoomButton.disabled = true;
   elements.createQrRoomButton.textContent = "Sala QR creada";
   playSound("correct");

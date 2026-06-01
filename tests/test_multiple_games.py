@@ -362,6 +362,26 @@ class MultipleGamesTest(unittest.TestCase):
         self.assertIn(".turn-popup.player-one", styles)
         self.assertIn(".turn-popup.player-two", styles)
 
+    def test_render_deployment_uses_environment_port_and_browser_origin_for_qr(self):
+        app_py = Path("app.py").read_text(encoding="utf-8")
+        client_js = Path("static/js/client.js").read_text(encoding="utf-8")
+        requirements = Path("requirements.txt").read_text(encoding="utf-16")
+
+        self.assertIn('port = int(os.environ.get("PORT", 5000))', app_py)
+        self.assertIn("port=port", app_py)
+        self.assertIn('async_mode="eventlet"', app_py)
+        self.assertNotIn("get_local_ip", app_py)
+        self.assertNotIn("localhost:5000", app_py)
+        self.assertIn("const socket = io({", client_js)
+        self.assertNotIn('io("http://localhost', client_js)
+        self.assertNotIn("io('http://localhost", client_js)
+        self.assertIn("window.location.origin", client_js)
+        self.assertIn("function isLocalOnlyHost()", client_js)
+        self.assertIn("abre el juego usando la IP WiFi", client_js)
+
+        for package in ["Flask", "Flask-SocketIO", "eventlet", "gunicorn"]:
+            self.assertIn(package, requirements)
+
     def test_two_qr_games_are_isolated(self):
         creator_one = server.socketio.test_client(server.app)
         self._create_qr_room(creator_one)

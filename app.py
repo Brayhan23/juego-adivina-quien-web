@@ -1,7 +1,8 @@
+import os
+import socket
 import threading
 import time
 import random
-import socket as network_socket
 import string
 
 from flask import Flask, render_template, request
@@ -13,7 +14,7 @@ from game import GameSession
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "dev-secret-key"
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 # Shared server state. The automatic queue, QR/private rooms, active games and
 # player index are intentionally separate so one matchmaking mode cannot steal
@@ -36,6 +37,32 @@ def create_player(sid):
         "sid": sid,
         "name": f"Jugador {sid[:4]}",
     }
+
+
+def detect_network_ip():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("8.8.8.8", 80))
+            return probe.getsockname()[0]
+    except OSError:
+        return None
+
+
+def print_startup_urls(port):
+    network_ip = detect_network_ip()
+    network_url = (
+        f"http://{network_ip}:{port}"
+        if network_ip
+        else "No disponible. Verifica tu conexion WiFi."
+    )
+
+    print("=" * 40, flush=True)
+    print("Servidor Adivina Quien iniciado", flush=True)
+    print(f"Puerto: {port}", flush=True)
+    print(f"Local: http://localhost:{port}", flush=True)
+    print(f"Red local: {network_url}", flush=True)
+    print("Usa la URL de red local en celulares o PCs conectados al mismo WiFi.", flush=True)
+    print("=" * 40, flush=True)
 
 
 def remove_from_waiting_queue(sid):
@@ -62,23 +89,6 @@ def generate_room_code():
         code = "".join(random.choices(alphabet, k=6))
         if code not in private_rooms:
             return code
-
-
-def get_local_ip():
-    try:
-        with network_socket.socket(network_socket.AF_INET, network_socket.SOCK_DGRAM) as probe:
-            probe.connect(("8.8.8.8", 80))
-            return probe.getsockname()[0]
-    except OSError:
-        return None
-
-
-def build_invitation_url(room_code):
-    local_ip = get_local_ip()
-    if local_ip and not local_ip.startswith("127."):
-        return f"http://{local_ip}:5000/?room={room_code}"
-
-    return f"{request.host_url.rstrip('/')}/?room={room_code}"
 
 
 def create_game_for_players(player_one, player_two):
@@ -131,6 +141,10 @@ def add_player_to_queue(sid):
         # Public matchmaking only uses waiting_players. QR rooms are stored in
         # private_rooms and never consume this queue.
         waiting_players.append(create_player(sid))
+        print(
+            f"[PUBLIC QUEUE] player={sid} waiting={len(waiting_players)}",
+            flush=True,
+        )
 
         if len(waiting_players) < 2:
             return {"status": "waiting", "game": None}
@@ -138,6 +152,12 @@ def add_player_to_queue(sid):
         player_one = waiting_players.pop(0)
         player_two = waiting_players.pop(0)
         game, thread = create_game_for_players(player_one, player_two)
+        print(
+            "[PUBLIC GAME] "
+            f"game={game.id} players={player_one['sid']},{player_two['sid']} "
+            f"waiting={len(waiting_players)}",
+            flush=True,
+        )
 
     thread.start()
     return {"status": "matched", "game": game}
@@ -316,6 +336,10 @@ def emit_error(message):
 
 @socketio.on("connect")
 def handle_connect():
+    print(
+        f"[CONNECT] player={request.sid} address={request.remote_addr}",
+        flush=True,
+    )
     emit("connected", {"message": "Conectado al servidor de Adivina Quien."})
 
     # Connecting only establishes the socket. The user must choose public or
@@ -363,12 +387,10 @@ def handle_create_private_room():
         emit_error(str(error))
         return
 
-    invitation_url = build_invitation_url(room["code"])
     emit(
         "private_room_created",
         {
             "room_code": room["code"],
-            "invitation_url": invitation_url,
             "message": "Sala QR creada. Esperando al segundo jugador.",
         },
     )
@@ -502,10 +524,12 @@ def handle_request_state():
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    print_startup_urls(port)
     socketio.run(
         app,
         host="0.0.0.0",
-        port=5000,
+        port=port,
         debug=False,
         use_reloader=False,
         allow_unsafe_werkzeug=True,
